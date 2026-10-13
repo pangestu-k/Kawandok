@@ -1,0 +1,11 @@
+body {
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  margin: 2rem;
+  color: #111;
+}
+
+nav {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1rem;
+}

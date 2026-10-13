@@ -1,0 +1,76 @@
+openapi: 3.0.3
+info:
+  title: Office AI Assistant API
+  version: 0.1.0
+  description: |
+    M0 contract skeleton. Only health endpoints are defined; document, chat and
+    finance endpoints are added in M1-M4 per docs/07-DELIVERY-PLAN.md.
+    All endpoints except health endpoints require authentication once identity
+    exists (M1). Error responses follow the shared error envelope.
+servers:
+  - url: http://127.0.0.1:8080
+    description: local development
+paths:
+  /healthz:
+    get:
+      summary: Liveness probe
+      operationId: getHealthz
+      responses:
+        "200":
+          description: Process is alive
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+  /readyz:
+    get:
+      summary: Readiness probe
+      operationId: getReadyz
+      responses:
+        "200":
+          description: Process is ready to serve traffic
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadinessResponse"
+        "503":
+          description: A required dependency is unavailable
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReadinessResponse"
+components:
+  schemas:
+    HealthResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [ok]
+    ReadinessResponse:
+      type: object
+      required: [status, checks]
+      properties:
+        status:
+          type: string
+          enum: [ok, unavailable]
+        checks:
+          type: object
+          additionalProperties:
+            type: string
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, request_id]
+          properties:
+            code:
+              type: string
+              example: DOCUMENT_FORBIDDEN
+            message:
+              type: string
+            request_id:
+              type: string
