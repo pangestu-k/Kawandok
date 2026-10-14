@@ -1,4 +1,4 @@
-﻿package main
+package main
 
 import (
 	"context"
@@ -117,7 +117,9 @@ func run() error {
 		financeSvc := finance.NewService(db, auditLog, log)
 		chatSvc := chat.NewService(chat.NewRepo(db), retrieval.NewSearcher(db, embedProvider, cfg.RetrievalTopK), llmProvider, chat.NewAuthorizer(checker), financeSvc, log)
 		chat.Register(mux, &chat.Handlers{Svc: chatSvc})
-		handler = auth.Middleware(auth.NewDev(db), mux)
+		jwtConfig := auth.JWTConfig{Issuer: cfg.JWTIssuer, Audience: cfg.JWTAudience, Key: []byte(cfg.JWTSigningKey), TTL: time.Duration(cfg.JWTTTLMinutes) * time.Minute}
+		auth.RegisterDevToken(mux, db, jwtConfig)
+		handler = auth.Middleware(auth.NewJWT(db, jwtConfig), mux)
 
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer stop()

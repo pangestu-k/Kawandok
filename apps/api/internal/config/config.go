@@ -16,17 +16,20 @@ const (
 	StorageMemory = "memory"
 	StorageS3     = "s3"
 
-	DefaultPort              = "8080"
-	DefaultEmbeddingDim      = 1536
-	DefaultPresignTTLSeconds = 60
-	DefaultMaxUploadBytes    = 26_214_400
-	DefaultRetrievalTopK     = 6
-	DefaultLLMBaseURL        = "https://api.openai.com/v1"
+	DefaultPort               = "8080"
+	DefaultEmbeddingDim       = 1536
+	DefaultPresignTTLSeconds  = 60
+	DefaultMaxUploadBytes     = 26_214_400
+	DefaultRetrievalTopK      = 6
+	DefaultLLMBaseURL         = "https://api.openai.com/v1"
 	DefaultRateLimitPerMinute = 120
-	maxEmbeddingDim          = 10000
-	maxPresignTTLSeconds     = 900
-	maxUploadBytes           = 104_857_600
-	maxRetrievalTopK         = 20
+	DefaultJWTIssuer          = "office-ai-dev"
+	DefaultJWTAudience        = "office-ai-api"
+	DefaultJWTTTLMinutes      = 60
+	maxEmbeddingDim           = 10000
+	maxPresignTTLSeconds      = 900
+	maxUploadBytes            = 104_857_600
+	maxRetrievalTopK          = 20
 )
 
 type Config struct {
@@ -48,13 +51,17 @@ type Config struct {
 	MaxUploadBytes    int64
 	DevSeed           bool
 
-	LLMBaseURL     string
-	LLMModel       string
-	LLMAPIKey      string
-	RetrievalTopK  int
+	LLMBaseURL    string
+	LLMModel      string
+	LLMAPIKey     string
+	RetrievalTopK int
 
 	RateLimitPerMinute int
 	MetricsEnabled     bool
+	JWTIssuer          string
+	JWTAudience        string
+	JWTSigningKey      string
+	JWTTTLMinutes      int
 }
 
 type Getter func(key string) string
@@ -75,9 +82,12 @@ func Load(getenv Getter) (Config, error) {
 		R2AccessKeyID:     strings.TrimSpace(getenv("API_R2_ACCESS_KEY_ID")),
 		R2SecretAccessKey: strings.TrimSpace(getenv("API_R2_SECRET_ACCESS_KEY")),
 
-		LLMBaseURL: strings.TrimSpace(getenv("API_LLM_BASE_URL")),
-		LLMModel:   strings.TrimSpace(getenv("API_LLM_MODEL")),
-		LLMAPIKey:  strings.TrimSpace(getenv("API_LLM_API_KEY")),
+		LLMBaseURL:    strings.TrimSpace(getenv("API_LLM_BASE_URL")),
+		LLMModel:      strings.TrimSpace(getenv("API_LLM_MODEL")),
+		LLMAPIKey:     strings.TrimSpace(getenv("API_LLM_API_KEY")),
+		JWTIssuer:     strings.TrimSpace(getenv("API_JWT_ISSUER")),
+		JWTAudience:   strings.TrimSpace(getenv("API_JWT_AUDIENCE")),
+		JWTSigningKey: strings.TrimSpace(getenv("API_JWT_SIGNING_KEY")),
 	}
 
 	if raw := strings.TrimSpace(getenv("API_RATE_LIMIT_RPM")); raw != "" {
@@ -127,6 +137,13 @@ func Load(getenv Getter) (Config, error) {
 	} else {
 		cfg.RetrievalTopK = parsed
 	}
+	if raw := strings.TrimSpace(getenv("API_JWT_TTL_MINUTES")); raw == "" {
+		cfg.JWTTTLMinutes = DefaultJWTTTLMinutes
+	} else if parsed, err := strconv.Atoi(raw); err != nil {
+		return Config{}, fmt.Errorf("API_JWT_TTL_MINUTES: %w", err)
+	} else {
+		cfg.JWTTTLMinutes = parsed
+	}
 
 	seedRaw := strings.ToLower(strings.TrimSpace(getenv("API_DEV_SEED")))
 	seedExplicit := seedRaw != ""
@@ -159,6 +176,12 @@ func applyDefaults(cfg *Config, seedExplicit bool) {
 	}
 	if cfg.EmbeddingProvider == "" {
 		cfg.EmbeddingProvider = ProviderMock
+	}
+	if cfg.JWTIssuer == "" {
+		cfg.JWTIssuer = DefaultJWTIssuer
+	}
+	if cfg.JWTAudience == "" {
+		cfg.JWTAudience = DefaultJWTAudience
 	}
 	if cfg.StorageBackend == "" {
 		if cfg.Env == EnvProd {
@@ -237,6 +260,15 @@ func (c Config) Validate() error {
 	}
 	if c.RateLimitPerMinute < 0 || c.RateLimitPerMinute > 100000 {
 		return fmt.Errorf("API_RATE_LIMIT_RPM must be between 0 and 100000, got %d", c.RateLimitPerMinute)
+	}
+	if len(c.JWTSigningKey) < 32 {
+		return fmt.Errorf("API_JWT_SIGNING_KEY must be at least 32 bytes for development JWT authentication")
+	}
+	if c.JWTIssuer == "" || c.JWTAudience == "" {
+		return fmt.Errorf("API_JWT_ISSUER and API_JWT_AUDIENCE are required")
+	}
+	if c.JWTTTLMinutes < 1 || c.JWTTTLMinutes > 1440 {
+		return fmt.Errorf("API_JWT_TTL_MINUTES must be between 1 and 1440, got %d", c.JWTTTLMinutes)
 	}
 	return nil
 }

@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 
-import { isLoggedIn, loginAs } from "../../lib/api";
+import { ApiError, isLoggedIn, loginAs } from "../../lib/api";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -14,15 +14,19 @@ export default function LoginPage() {
     }
   }, []);
 
-  const submit = (event: FormEvent) => {
+  const submit = async (event: FormEvent) => {
     event.preventDefault();
     const value = email.trim().toLowerCase();
     if (!value || !value.includes("@")) {
       setError("Masukkan email development yang valid (contoh: admin@dev.local).");
       return;
     }
-    loginAs(value);
-    window.location.href = "/chat";
+    try {
+      await loginAs(value);
+      window.location.href = "/chat";
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Tidak dapat masuk.");
+    }
   };
 
   return (
@@ -30,7 +34,7 @@ export default function LoginPage() {
       <form className="card login" onSubmit={submit}>
         <h1>Masuk</h1>
         <p className="muted">
-          Mode development: masukkan email seeded user
+          Mode development: token JWT diterbitkan untuk email seeded user
           (admin@dev.local, siti@dev.local, budi@dev.local, rian@dev.local).
         </p>
         <label htmlFor="email">Email</label>

@@ -12,8 +12,8 @@ func Run(ctx context.Context, db *sql.DB) error {
 		 ON CONFLICT (name) DO NOTHING`,
 		`INSERT INTO roles (name) VALUES ('admin'), ('employee'), ('finance')
 		 ON CONFLICT (name) DO NOTHING`,
-		`INSERT INTO users (email, display_name, department_id)
-		 SELECT v.email, v.display_name, d.id
+		`INSERT INTO users (email, display_name, department_id, external_subject)
+		 SELECT v.email, v.display_name, d.id, 'dev:' || v.email
 		 FROM (VALUES
 		     ('admin@dev.local', 'Dev Admin', 'General'),
 		     ('budi@dev.local', 'Budi Santoso', 'General'),
@@ -21,7 +21,7 @@ func Run(ctx context.Context, db *sql.DB) error {
 		     ('rian@dev.local', 'Rian Pratama', 'Finance')
 		 ) AS v(email, display_name, dept)
 		 JOIN departments d ON d.name = v.dept
-		 ON CONFLICT (email) DO NOTHING`,
+		 ON CONFLICT (email) DO UPDATE SET external_subject = EXCLUDED.external_subject`,
 		`INSERT INTO user_roles (user_id, role_id)
 		 SELECT u.id, r.id
 		 FROM (VALUES

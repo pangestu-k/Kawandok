@@ -3,8 +3,8 @@ info:
   title: Office AI Assistant API
   version: 0.2.0
   description: |
-    M1 contract. Identity is a development fixture: requests authenticate with
-    `Authorization: Bearer dev-<email>` against seeded dev users. Documents are
+    Development identity uses short-lived, server-issued JWTs for seeded users.
+    Production startup remains blocked until OIDC is configured. Documents are
     deny-by-default: missing and forbidden resources return identical 404
     responses to prevent enumeration. Chat and finance endpoints follow in
     M3/M4 per docs/07-DELIVERY-PLAN.md.
@@ -14,6 +14,27 @@ servers:
 security:
   - bearerAuth: []
 paths:
+  /auth/dev/token:
+    post:
+      summary: Issue a learning-only JWT for an active seeded development user
+      operationId: issueDevelopmentToken
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        "200":
+          description: Short-lived development bearer token
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
   /healthz:
     get:
       summary: Liveness probe
@@ -305,7 +326,7 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
-      description: Development fixture tokens look like `dev-admin@dev.local`
+      description: JWT bearer token. The local development issuer is not available in production; OIDC will replace it.
   parameters:
     DocumentID:
       in: path

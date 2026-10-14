@@ -3,11 +3,7 @@ package auth
 import (
 	"context"
 	"database/sql"
-	"errors"
-	"fmt"
 	"strings"
-
-	"github.com/lib/pq"
 )
 
 const devTokenPrefix = "dev-"
@@ -29,23 +25,5 @@ func (d *DevAuthenticator) Authenticate(ctx context.Context, token string) (Prin
 		return Principal{}, ErrInvalidToken
 	}
 
-	var p Principal
-	var roles []string
-	err := d.db.QueryRowContext(ctx, `
-		SELECT u.id::text, u.email, u.display_name, u.department_id::text,
-		       COALESCE(array_agg(r.name) FILTER (WHERE r.name IS NOT NULL), '{}')
-		FROM users u
-		LEFT JOIN user_roles ur ON ur.user_id = u.id
-		LEFT JOIN roles r ON r.id = ur.role_id
-		WHERE (u.email = $1 OR u.id::text = $1) AND u.status = 'active'
-		GROUP BY u.id
-	`, ident).Scan(&p.ID, &p.Email, &p.DisplayName, &p.DepartmentID, pq.Array(&roles))
-	if errors.Is(err, sql.ErrNoRows) {
-		return Principal{}, ErrInvalidToken
-	}
-	if err != nil {
-		return Principal{}, fmt.Errorf("auth: user lookup failed: %w", err)
-	}
-	p.Roles = roles
-	return p, nil
+	return loadPrincipal(ctx, d.db, "email", ident)
 }

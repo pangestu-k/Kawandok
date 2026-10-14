@@ -50,8 +50,16 @@ export function getToken(): string | null {
   return window.localStorage.getItem(TOKEN_KEY);
 }
 
-export function loginAs(email: string): void {
-  window.localStorage.setItem(TOKEN_KEY, `dev-${email.trim()}`);
+export async function loginAs(email: string): Promise<void> {
+  const resp = await fetch("/api/auth/dev/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: email.trim() }),
+  });
+  if (!resp.ok) throw await parseError(resp);
+  const body = (await resp.json()) as { access_token?: string };
+  if (!body.access_token) throw new ApiError(500, "INVALID_LOGIN_RESPONSE", "Token tidak tersedia.");
+  window.localStorage.setItem(TOKEN_KEY, body.access_token);
 }
 
 export function logout(): void {

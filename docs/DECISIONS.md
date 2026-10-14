@@ -31,7 +31,7 @@ Use for new decisions made during implementation. Record date, decision, options
 - `make secret-scan` runs gitleaks when installed, otherwise a pattern-based fallback over tracked files.
 
 ## M1 implementation decisions (2026-10-13)
-- **Dev auth fixture**: `Authorization: Bearer dev-<email>` resolves seeded dev users (replaceable `auth.Authenticator` interface). The API **refuses to start in `prod` env** because no production IdP exists yet (M5).
+- **Dev auth fixture (superseded 2026-10-14)**: the original `dev-<email>` fixture was replaced by short-lived server-issued JWTs. The API **refuses to start in `prod` env** because no production IdP exists yet (M5).
 - **ACL is one code path** (`internal/authz`): deny-by-default; access = admin role OR exact-action grant to user/role/department. Grant actions do not inherit (`read` does not allow `download`); `manage` is reserved for future admin tooling. All document queries receive a computed scope — repositories have no scopeless read path.
 - **Uniform 404** for missing and forbidden documents on get/download/status; list/search omit inaccessible documents including from counts. Access-denied attempts are written to `audit_events` (`document.access_denied`, result `denied`) without confirming existence in the response.
 - **Downloads stream through the API after ACL checks** by default; `?mode=presigned` returns a short-lived signed URL (TTL default 60s, hard cap 15 min) only when the storage backend supports presigning.
@@ -75,3 +75,8 @@ Use for new decisions made during implementation. Record date, decision, options
 - **Numbers are never LLM-computed**: tool results are aggregated in Postgres and rendered into text by Go (`IDR 32.000.000,00` style formatting). The LLM is not invoked on the finance path in M4, eliminating verbalization/hallucination risk on figures.
 - **XLSX versions are not chunked/embedded**: they produce structured rows only (the document still reaches `ready` and is searchable by metadata). Worker `openpyxl==3.1.5` pinned.
 - Every finance tool execution writes `finance.summary` / `finance.compare` audit events with allowed/denied results.
+
+## M5 authentication preparation (2026-10-14)
+- Learning/dev uses short-lived, server-issued HS256 JWTs. The signing key stays server-side; the browser requests a token only for an active seeded user via a dev-only endpoint. This is deliberately not a production login mechanism.
+- JWT `sub` maps to `users.external_subject` (seeded as `dev:<email>`). A future OIDC verifier will validate issuer/JWKS/audience and reuse this mapping, preserving existing application roles, departments, and ACLs.
+- Production startup remains blocked until an OIDC provider and its issuer/audience policy are selected.

@@ -37,13 +37,14 @@ make down          # stop the dev stack
 
 Configuration template: `infra/.env.example` â€” copy to `.env` and fill in before using real providers. Never commit `.env` or real credentials. Dev-only database passwords exist in migration 000001 and must be rotated before any shared environment (see `docs/DECISIONS.md`).
 
-Development auth fixture (M1): authenticate as a seeded user with `Authorization: Bearer dev-<email>`:
+Development auth fixture: request a short-lived JWT for a seeded user, then pass it as a bearer token:
 
 ```sh
-curl -H "Authorization: Bearer dev-admin@dev.local" http://127.0.0.1:8080/v1/documents
+TOKEN=$(curl -s -X POST http://127.0.0.1:8080/auth/dev/token -H 'Content-Type: application/json' -d '{"email":"admin@dev.local"}' | jq -r .access_token)
+curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8080/v1/documents
 ```
 
-Seeded dev users: `admin@dev.local` (admin), `budi@dev.local` (employee, General), `siti@dev.local` (finance, Finance), `rian@dev.local` (employee, Finance). Upload requires the admin role and grants are deny-by-default.
+Seeded dev users: `admin@dev.local` (admin), `budi@dev.local` (employee, General), `siti@dev.local` (finance, Finance), `rian@dev.local` (employee, Finance). Upload requires the admin role and grants are deny-by-default. The dev issuer is disabled by the production startup guard; OIDC is still required before launch.
 
 ### IDE troubleshooting (Go imports)
 
