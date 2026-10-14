@@ -2,14 +2,12 @@ package httpapi
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
-	"encoding/json"
 	"log/slog"
 	"net/http"
 	"time"
 
 	"office-ai-agent/apps/api/internal/config"
+	"office-ai-agent/apps/api/internal/httpx"
 	"office-ai-agent/apps/api/internal/logging"
 )
 
@@ -35,26 +33,25 @@ func New(cfg config.Config, log *slog.Logger, pinger Pinger) *Server {
 	}
 }
 
-func NewRequestID() string {
-	var b [8]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		return ""
-	}
-	return hex.EncodeToString(b[:])
+func (s *Server) Register(mux *http.ServeMux) {
+	mux.HandleFunc("GET /healthz", s.handleHealthz)
+	mux.HandleFunc("GET /readyz", s.handleReadyz)
 }
 
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /healthz", s.handleHealthz)
-	mux.HandleFunc("GET /readyz", s.handleReadyz)
+	s.Register(mux)
 	mux.HandleFunc("/", s.handleNotFound)
+	return s.withRequestLog(secureHeaders(withRequestID(withRecovery(s.log, mux))))
+}
 
-	handler := secureHeaders(withRequestID(withRecovery(s.log, mux)))
-	return s.withRequestLog(handler)
+func Chain(log *slog.Logger, next http.Handler) http.Handler {
+	s := &Server{log: log, now: time.Now}
+	return secureHeaders(s.withRequestLog(withRequestID(withRecovery(log, next))))
 }
 
 func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 func (s *Server) handleReadyz(w http.ResponseWriter, r *http.Request) {
@@ -79,33 +76,18 @@ func (s *Server) handleReadyz(w http.ResponseWriter, r *http.Request) {
 	} else {
 		body["status"] = "unavailable"
 	}
-	writeJSON(w, status, body)
+	httpx.WriteJSON(w, status, body)
 }
 
 func (s *Server) handleNotFound(w http.ResponseWriter, r *http.Request) {
-	writeError(w, r, http.StatusNotFound, "NOT_FOUND", "route not found")
-}
-
-type ctxKey int
-
-const requestIDKey ctxKey = 0
-
-func RequestIDFromContext(ctx context.Context) string {
-	if id, ok := ctx.Value(requestIDKey).(string); ok {
-		return id
-	}
-	return ""
+	httpx.WriteError(w, r, httpx.ErrNotFound())
 }
 
 func withRequestID(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		id := r.Header.Get("X-Request-ID")
-		if id == "" || len(id) > 128 {
-			id = NewRequestID()
-		}
+		id := httpx.NormalizeRequestID(r.Header.Get("X-Request-ID"))
 		w.Header().Set("X-Request-ID", id)
-		ctx := context.WithValue(r.Context(), requestIDKey, id)
-		next.ServeHTTP(w, r.WithContext(ctx))
+		next.ServeHTTP(w, r.WithContext(httpx.ContextWithRequestID(r.Context(), id)))
 	})
 }
 
@@ -123,7 +105,7 @@ func withRecovery(log *slog.Logger, next http.Handler) http.Handler {
 		defer func() {
 			if rec := recover(); rec != nil {
 				log.Error("panic recovered", "panic", rec, "path", r.URL.Path)
-				writeError(w, r, http.StatusInternalServerError, "INTERNAL", "internal server error")
+				httpx.WriteError(w, r, httpx.NewAPIError(http.StatusInternalServerError, "INTERNAL", "internal server error"))
 			}
 		}()
 		next.ServeHTTP(w, r)
@@ -163,22 +145,4 @@ func toSlogArgs(fields map[string]any) []any {
 		args = append(args, k, v)
 	}
 	return args
-}
-
-func writeJSON(w http.ResponseWriter, status int, body any) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	if err := json.NewEncoder(w).Encode(body); err != nil {
-		return
-	}
-}
-
-func writeError(w http.ResponseWriter, r *http.Request, status int, code, message string) {
-	writeJSON(w, status, map[string]any{
-		"error": map[string]any{
-			"code":       code,
-			"message":    message,
-			"request_id": RequestIDFromContext(r.Context()),
-		},
-	})
 }

@@ -28,5 +28,15 @@ services:
       timeout: 3s
       retries: 10
 
+  s3:
+    image: chrislusf/seaweedfs:3.80
+    restart: unless-stopped
+    command: ["server", "-dir=/data", "-filer", "-s3", "-s3.port=8333", "-master.volumeSizeLimitMB=1024"]
+    ports:
+      - "127.0.0.1:${S3_PORT:-19000}:8333"
+    volumes:
+      - s3data:/data
+
 volumes:
   pgdata: {}
+  s3data: {}

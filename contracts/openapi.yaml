@@ -1,20 +1,24 @@
 openapi: 3.0.3
 info:
   title: Office AI Assistant API
-  version: 0.1.0
+  version: 0.2.0
   description: |
-    M0 contract skeleton. Only health endpoints are defined; document, chat and
-    finance endpoints are added in M1-M4 per docs/07-DELIVERY-PLAN.md.
-    All endpoints except health endpoints require authentication once identity
-    exists (M1). Error responses follow the shared error envelope.
+    M1 contract. Identity is a development fixture: requests authenticate with
+    `Authorization: Bearer dev-<email>` against seeded dev users. Documents are
+    deny-by-default: missing and forbidden resources return identical 404
+    responses to prevent enumeration. Chat and finance endpoints follow in
+    M3/M4 per docs/07-DELIVERY-PLAN.md.
 servers:
   - url: http://127.0.0.1:8080
     description: local development
+security:
+  - bearerAuth: []
 paths:
   /healthz:
     get:
       summary: Liveness probe
       operationId: getHealthz
+      security: []
       responses:
         "200":
           description: Process is alive
@@ -26,6 +30,7 @@ paths:
     get:
       summary: Readiness probe
       operationId: getReadyz
+      security: []
       responses:
         "200":
           description: Process is ready to serve traffic
@@ -39,7 +44,192 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ReadinessResponse"
+  /documents:
+    get:
+      summary: List and search documents authorized for the caller
+      operationId: listDocuments
+      parameters:
+        - in: query
+          name: query
+          schema: { type: string }
+          description: Matches title or original filename
+        - in: query
+          name: status
+          schema: { type: string, enum: [uploaded, queued, processing, ready, failed] }
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1, default: 1 }
+        - in: query
+          name: page_size
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        "200":
+          description: Authorized documents only; counts respect the caller scope
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentList"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      summary: Upload a document (admin only)
+      operationId: uploadDocument
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/UploadRequest"
+      responses:
+        "201":
+          description: Document stored; ingestion status is `uploaded` until M2
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UploadResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Caller lacks the admin role
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "413":
+          description: File exceeds the configured upload limit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "415":
+          description: Unsupported or mismatched file type (.pdf, .docx, .xlsx only)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /documents/{id}:
+    get:
+      summary: Document metadata and current version
+      operationId: getDocument
+      parameters:
+        - $ref: "#/components/parameters/DocumentID"
+      responses:
+        "200":
+          description: Authorized document metadata
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Document"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFoundUniform"
+  /documents/{id}/download:
+    get:
+      summary: Download the original file if authorized
+      operationId: downloadDocument
+      parameters:
+        - $ref: "#/components/parameters/DocumentID"
+        - in: query
+          name: mode
+          schema: { type: string, enum: [presigned] }
+          description: |
+            When `presigned`, responds with a short-lived signed URL (default TTL
+            60s, backend must support it). Otherwise streams the object through
+            the API after the ACL check.
+      responses:
+        "200":
+          description: |
+            Either the file stream (Content-Disposition attachment) or a JSON
+            body with a presigned URL, depending on the requested mode.
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFoundUniform"
+  /documents/{id}/versions/{versionId}/status:
+    get:
+      summary: Ingestion status of a specific version
+      operationId: getDocumentVersionStatus
+      parameters:
+        - $ref: "#/components/parameters/DocumentID"
+        - in: path
+          required: true
+          name: versionId
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Current status
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [version_id, status]
+                properties:
+                  version_id: { type: string, format: uuid }
+                  status: { type: string, enum: [uploaded, queued, processing, ready, failed] }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFoundUniform"
+  /documents/{id}/reindex:
+    post:
+      summary: Re-run ingestion for the current version (admin only)
+      operationId: reindexDocument
+      parameters:
+        - $ref: "#/components/parameters/DocumentID"
+      responses:
+        "202":
+          description: |
+            A job is queued. When an active job already exists for the version
+            the existing job is returned with `deduplicated: true`.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [job_id, status, deduplicated]
+                properties:
+                  job_id: { type: string, format: uuid }
+                  status: { type: string, enum: [queued] }
+                  deduplicated: { type: boolean }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFoundUniform"
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: Development fixture tokens look like `dev-admin@dev.local`
+  parameters:
+    DocumentID:
+      in: path
+      required: true
+      name: id
+      schema: { type: string, format: uuid }
+  responses:
+    Unauthorized:
+      description: Missing or invalid credentials
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    BadRequest:
+      description: Invalid request
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    NotFoundUniform:
+      description: |
+        Not found OR not authorized - responses are intentionally identical to
+        prevent document enumeration.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
   schemas:
     HealthResponse:
       type: object
@@ -74,3 +264,58 @@ components:
               type: string
             request_id:
               type: string
+    UploadRequest:
+      type: object
+      required: [file, title, classification, department_id]
+      properties:
+        file:
+          type: string
+          format: binary
+        title:
+          type: string
+          maxLength: 512
+        classification:
+          type: string
+          enum: [internal, confidential, restricted]
+        department_id:
+          type: string
+          format: uuid
+        grants:
+          type: string
+          description: |
+            JSON array of access grants, e.g.
+            `[{"principal_type":"department","principal_name":"Finance","action":"read"}]`.
+            `principal_type` is `user|role|department`; principals are referenced
+            by `principal_id` (UUID) or `principal_name` (email / role name /
+            department name); `action` is `read|download|manage`.
+    UploadResponse:
+      type: object
+      required: [document_id, version_id, status]
+      properties:
+        document_id: { type: string, format: uuid }
+        version_id: { type: string, format: uuid }
+        status: { type: string }
+    Document:
+      type: object
+      required: [id, title, classification, department_id, created_at, version_id, status, filename, size_bytes]
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        classification: { type: string, enum: [internal, confidential, restricted] }
+        department_id: { type: string, format: uuid }
+        created_at: { type: string, format: date-time }
+        version_id: { type: string, format: uuid }
+        status: { type: string }
+        filename: { type: string }
+        size_bytes: { type: integer, format: int64 }
+    DocumentList:
+      type: object
+      required: [items, total, page, page_size]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Document"
+        total: { type: integer }
+        page: { type: integer }
+        page_size: { type: integer }

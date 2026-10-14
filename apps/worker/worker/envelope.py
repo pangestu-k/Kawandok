@@ -9,6 +9,9 @@ ENVELOPE_VERSION = 1
 ALLOWED_JOB_TYPES = frozenset({"ingest_document", "reindex_document"})
 ALLOWED_KEYS = frozenset({"job_id", "job_type", "envelope_version", "idempotency_key", "payload"})
 REQUIRED_KEYS = frozenset({"job_id", "job_type", "envelope_version", "payload"})
+REQUIRED_PAYLOAD_KEYS = frozenset(
+    {"document_id", "document_version_id", "version_number", "storage_bucket", "storage_key"}
+)
 
 
 class EnvelopeError(ValueError):
@@ -63,6 +66,28 @@ def validate_envelope(raw: bytes | str, max_payload_bytes: int) -> JobEnvelope:
     payload = data["payload"]
     if not isinstance(payload, dict):
         raise EnvelopeError("payload must be a JSON object")
+
+    missing_payload = REQUIRED_PAYLOAD_KEYS - set(payload)
+    if missing_payload:
+        raise EnvelopeError(f"payload missing keys: {sorted(missing_payload)}")
+
+    for key in ("document_id", "document_version_id"):
+        _validate_uuid(payload[key], f"payload.{key}")
+
+    version_number = payload["version_number"]
+    if (
+        isinstance(version_number, bool)
+        or not isinstance(version_number, int)
+        or version_number < 1
+    ):
+        raise EnvelopeError("payload.version_number must be a positive integer")
+
+    for key in ("storage_bucket", "storage_key"):
+        value = payload[key]
+        if not isinstance(value, str) or not value:
+            raise EnvelopeError(f"payload.{key} must be a non-empty string")
+        if len(value) > 512:
+            raise EnvelopeError(f"payload.{key} exceeds 512 characters")
 
     idempotency_key = data.get("idempotency_key", data["job_id"])
     _validate_uuid(idempotency_key, "idempotency_key")

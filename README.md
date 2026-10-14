@@ -1,6 +1,6 @@
 # Office AI Assistant — AI Agent Build Pack
 
-Status: **M0 scaffold implemented** (compose dev stack, health endpoints, migrations, deterministic mock AI providers, offline tests). Product features arrive milestone by milestone per `docs/07-DELIVERY-PLAN.md`. This repository documentation remains the source of truth, not evidence that later features exist.
+Status: **M2 implemented** (async ingestion worker: upload → queued → parse/chunk/embed → ready with pgvector chunks, retries and idempotent reprocessing; plus M1 ACL-protected document upload/download and the M0 scaffold). Chat/RAG arrives in M3, finance in M4. This repository documentation remains the source of truth, not evidence that later features exist.
 
 ## Product in one sentence
 A permission-aware internal company assistant, accessed by chat, that can locate and return original office files, answer questions grounded in their contents, and compute reliable financial results from structured data.
@@ -19,10 +19,10 @@ A permission-aware internal company assistant, accessed by chat, that can locate
 Prerequisites: Go 1.22+, Node.js 20+, Python 3.10+, Docker.
 
 ```sh
-make up            # start Postgres(pgvector) on 127.0.0.1:15432 and Redis on 127.0.0.1:16379
-make migrate       # apply infra/db/migrations (creates least-privilege db roles)
-go run ./apps/api/cmd/api   # API health endpoints on :8080
-cd apps/worker && python -m worker.main
+make up            # Postgres(pgvector):15432, Redis:16379, S3-compatible (SeaweedFS):19000
+make migrate       # apply infra/db/migrations ({{EMBEDDING_DIM}} defaults to API_EMBEDDING_DIM=1536)
+go run ./apps/api/cmd/api   # API on :8080
+cd apps/worker && python -m worker.main   # ingestion worker (needs pip install of pinned deps)
 cd apps/web && npm install && npm run dev
 ```
 
@@ -36,6 +36,14 @@ make down          # stop the dev stack
 ```
 
 Configuration template: `infra/.env.example` — copy to `.env` and fill in before using real providers. Never commit `.env` or real credentials. Dev-only database passwords exist in migration 000001 and must be rotated before any shared environment (see `docs/DECISIONS.md`).
+
+Development auth fixture (M1): authenticate as a seeded user with `Authorization: Bearer dev-<email>`:
+
+```sh
+curl -H "Authorization: Bearer dev-admin@dev.local" http://127.0.0.1:8080/v1/documents
+```
+
+Seeded dev users: `admin@dev.local` (admin), `budi@dev.local` (employee, General), `siti@dev.local` (finance, Finance), `rian@dev.local` (employee, Finance). Upload requires the admin role and grants are deny-by-default.
 
 ## Read these files, in order
 1. `AGENTS.md` — rules for coding agents

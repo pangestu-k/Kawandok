@@ -2,6 +2,8 @@ SHELL := /bin/sh
 
 COMPOSE_FILE := infra/docker-compose.yml
 DATABASE_URL ?= postgres://migrator:dev_migrator_password@127.0.0.1:15432/office_ai?sslmode=disable
+ACL_TEST_DATABASE_URL ?= postgres://migrator:dev_migrator_password@127.0.0.1:15432/office_ai?sslmode=disable
+WORKER_TEST_DATABASE_URL ?= postgres://migrator:dev_migrator_password@127.0.0.1:15432/office_ai?sslmode=disable
 
 .PHONY: help dev up down migrate migrate-down migrate-version test test-go test-worker test-web lint lint-go lint-worker lint-web secret-scan
 
@@ -40,10 +42,10 @@ migrate-version:
 test: test-go test-worker test-web
 
 test-go:
-	cd apps/api && go test ./...
+	cd apps/api && ACL_TEST_DATABASE_URL="$(ACL_TEST_DATABASE_URL)" go test ./...
 
 test-worker:
-	cd apps/worker && python -m unittest discover -s tests -v
+	cd apps/worker && WORKER_TEST_DATABASE_URL="$(WORKER_TEST_DATABASE_URL)" python -m unittest discover -s tests -v
 
 test-web:
 	cd apps/web && npm run test

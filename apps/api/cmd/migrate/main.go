@@ -27,6 +27,7 @@ commands:
 func main() {
 	dir := flag.String("dir", "infra/db/migrations", "path to the migrations directory")
 	database := flag.String("database", os.Getenv("API_DATABASE_URL"), "database URL; defaults to API_DATABASE_URL")
+	dim := flag.String("dim", defaultString("API_EMBEDDING_DIM", "1536"), "value substituted for {{EMBEDDING_DIM}} in migrations")
 	flag.Usage = func() { fmt.Fprint(os.Stderr, usageText) }
 	flag.Parse()
 
@@ -47,7 +48,7 @@ func main() {
 		if *database == "" {
 			fatal("database URL is required (pass -database or set API_DATABASE_URL)")
 		}
-		err = runMigration(*dir, *database, args)
+		err = runMigration(*dir, *database, *dim, args)
 	default:
 		flag.Usage()
 		os.Exit(2)
@@ -61,8 +62,14 @@ func main() {
 	}
 }
 
-func runMigration(dir, database string, args []string) error {
-	m, err := migrate.New("file://"+filepath.ToSlash(dir), database)
+func runMigration(dir, database, dim string, args []string) error {
+	prepared, cleanup, err := prepareMigrations(dir, dim)
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	m, err := migrate.New("file://"+filepath.ToSlash(prepared), database)
 	if err != nil {
 		return err
 	}
@@ -98,6 +105,40 @@ func runMigration(dir, database string, args []string) error {
 		return m.Force(version)
 	}
 	return fmt.Errorf("unknown command %q", args[0])
+}
+
+func prepareMigrations(src, dim string) (string, func(), error) {
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return "", nil, err
+	}
+	tmp, err := os.MkdirTemp("", "office-ai-migrations-*")
+	if err != nil {
+		return "", nil, err
+	}
+	cleanup := func() { os.RemoveAll(tmp) }
+
+	for _, e := range entries {
+		if e.IsDir() || filepath.Ext(e.Name()) != ".sql" {
+			continue
+		}
+		content, err := os.ReadFile(filepath.Join(src, e.Name()))
+		if err != nil {
+			return "", cleanup, err
+		}
+		rendered := strings.ReplaceAll(string(content), "{{EMBEDDING_DIM}}", dim)
+		if err := os.WriteFile(filepath.Join(tmp, e.Name()), []byte(rendered), 0o644); err != nil {
+			return "", cleanup, err
+		}
+	}
+	return tmp, cleanup, nil
+}
+
+func defaultString(key, def string) string {
+	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
+		return v
+	}
+	return def
 }
 
 func createMigrationPair(dir, name string) error {
