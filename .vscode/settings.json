@@ -1,0 +1,18 @@
+{
+  "gopls": {
+    "build.env": {
+      "GO111MODULE": "on",
+      "GOTOOLCHAIN": "local"
+    }
+  },
+  "go.toolsEnvVars": {
+    "GO111MODULE": "on",
+    "GOTOOLCHAIN": "local"
+  },
+  "go.formatTool": "gofmt",
+  "go.lintTool": "staticcheck",
+  "go.testEnvVars": {
+    "ACL_TEST_DATABASE_URL": "postgres://migrator:dev_migrator_password@127.0.0.1:15432/office_ai?sslmode=disable",
+    "WORKER_TEST_DATABASE_URL": "postgres://migrator:dev_migrator_password@127.0.0.1:15432/office_ai?sslmode=disable"
+  }
+}

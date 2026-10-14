@@ -45,6 +45,17 @@ curl -H "Authorization: Bearer dev-admin@dev.local" http://127.0.0.1:8080/v1/doc
 
 Seeded dev users: `admin@dev.local` (admin), `budi@dev.local` (employee, General), `siti@dev.local` (finance, Finance), `rian@dev.local` (employee, Finance). Upload requires the admin role and grants are deny-by-default.
 
+### IDE troubleshooting (Go imports)
+
+If your editor reports `cannot find package ... in GOROOT or GOPATH`, the tooling is resolving in **GOPATH mode** instead of module mode (this machine has `GOPATH=D:\Working\Golang` and the repo sits inside `GOPATH\src`, with `GO111MODULE=auto`). The repo ships `go.work` and `.vscode/settings.json` that force module mode:
+
+1. Open the **repository root** (`office-ai-agent`) in your editor, not a subfolder.
+2. VS Code: reload the Go language server (`Go: Restart Language Server`) or reload the window.
+3. GoLand: Settings → Go → Go Modules → enable Go modules integration; GOROOT must point to Go 1.22.
+4. Recommended machine-wide fix: `setx GO111MODULE on` (then reopen the editor).
+
+The CLI is unaffected: `go build ./...` / `go test ./...` inside `apps/api` and from the repository root (via `go.work`) both pass.
+
 ## Read these files, in order
 1. `AGENTS.md` — rules for coding agents
 2. `docs/01-PRD.md` — scope and acceptance criteria
