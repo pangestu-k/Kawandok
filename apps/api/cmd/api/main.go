@@ -17,12 +17,16 @@ import (
 	"office-ai-agent/apps/api/internal/audit"
 	"office-ai-agent/apps/api/internal/auth"
 	"office-ai-agent/apps/api/internal/authz"
+	"office-ai-agent/apps/api/internal/chat"
 	"office-ai-agent/apps/api/internal/config"
 	"office-ai-agent/apps/api/internal/devseed"
 	"office-ai-agent/apps/api/internal/documents"
+	"office-ai-agent/apps/api/internal/embedding"
 	"office-ai-agent/apps/api/internal/httpapi"
+	"office-ai-agent/apps/api/internal/llm"
 	"office-ai-agent/apps/api/internal/logging"
 	"office-ai-agent/apps/api/internal/queue"
+	"office-ai-agent/apps/api/internal/retrieval"
 	"office-ai-agent/apps/api/internal/storage"
 )
 
@@ -95,6 +99,22 @@ func run() error {
 			log,
 		)
 		documents.Register(mux, &documents.Handlers{Svc: svc, Log: log})
+
+		var embedProvider embedding.Provider
+		if cfg.EmbeddingProvider == config.ProviderMock {
+			embedProvider, err = embedding.NewMock(cfg.EmbeddingDim)
+			if err != nil {
+				return err
+			}
+		}
+
+		llmProvider, err := buildLLMProvider(cfg)
+		if err != nil {
+			return err
+		}
+
+		chatSvc := chat.NewService(chat.NewRepo(db), retrieval.NewSearcher(db, embedProvider, cfg.RetrievalTopK), llmProvider, chat.NewAuthorizer(checker), log)
+		chat.Register(mux, &chat.Handlers{Svc: chatSvc})
 		handler = auth.Middleware(auth.NewDev(db), mux)
 
 		ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -117,6 +137,19 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	return serve(ctx, httpServer, log, cfg)
+}
+
+func buildLLMProvider(cfg config.Config) (llm.Provider, error) {
+	switch cfg.LLMProvider {
+	case config.ProviderOpenAI:
+		return llm.NewOpenAI(llm.OpenAIConfig{
+			BaseURL: cfg.LLMBaseURL,
+			APIKey:  cfg.LLMAPIKey,
+			Model:   cfg.LLMModel,
+		})
+	default:
+		return llm.NewGroundedMock(), nil
+	}
 }
 
 func ensureBucketWithRetry(ctx context.Context, store *storage.S3, log *slog.Logger) error {

@@ -10,7 +10,8 @@ const (
 	EnvDev  = "dev"
 	EnvProd = "prod"
 
-	ProviderMock = "mock"
+	ProviderMock   = "mock"
+	ProviderOpenAI = "openai"
 
 	StorageMemory = "memory"
 	StorageS3     = "s3"
@@ -19,9 +20,12 @@ const (
 	DefaultEmbeddingDim      = 1536
 	DefaultPresignTTLSeconds = 60
 	DefaultMaxUploadBytes    = 26_214_400
+	DefaultRetrievalTopK     = 6
+	DefaultLLMBaseURL        = "https://api.openai.com/v1"
 	maxEmbeddingDim          = 10000
 	maxPresignTTLSeconds     = 900
 	maxUploadBytes           = 104_857_600
+	maxRetrievalTopK         = 20
 )
 
 type Config struct {
@@ -42,6 +46,11 @@ type Config struct {
 	PresignTTLSeconds int
 	MaxUploadBytes    int64
 	DevSeed           bool
+
+	LLMBaseURL    string
+	LLMModel      string
+	LLMAPIKey     string
+	RetrievalTopK int
 }
 
 type Getter func(key string) string
@@ -61,6 +70,10 @@ func Load(getenv Getter) (Config, error) {
 		R2AccountID:       strings.TrimSpace(getenv("API_R2_ACCOUNT_ID")),
 		R2AccessKeyID:     strings.TrimSpace(getenv("API_R2_ACCESS_KEY_ID")),
 		R2SecretAccessKey: strings.TrimSpace(getenv("API_R2_SECRET_ACCESS_KEY")),
+
+		LLMBaseURL: strings.TrimSpace(getenv("API_LLM_BASE_URL")),
+		LLMModel:   strings.TrimSpace(getenv("API_LLM_MODEL")),
+		LLMAPIKey:  strings.TrimSpace(getenv("API_LLM_API_KEY")),
 	}
 
 	if raw := strings.TrimSpace(getenv("API_EMBEDDING_DIM")); raw == "" {
@@ -85,6 +98,14 @@ func Load(getenv Getter) (Config, error) {
 		return Config{}, fmt.Errorf("API_MAX_UPLOAD_BYTES: %w", err)
 	} else {
 		cfg.MaxUploadBytes = parsed
+	}
+
+	if raw := strings.TrimSpace(getenv("API_RETRIEVAL_TOP_K")); raw == "" {
+		cfg.RetrievalTopK = DefaultRetrievalTopK
+	} else if parsed, err := strconv.Atoi(raw); err != nil {
+		return Config{}, fmt.Errorf("API_RETRIEVAL_TOP_K: %w", err)
+	} else {
+		cfg.RetrievalTopK = parsed
 	}
 
 	seedRaw := strings.ToLower(strings.TrimSpace(getenv("API_DEV_SEED")))
@@ -112,6 +133,9 @@ func applyDefaults(cfg *Config, seedExplicit bool) {
 	}
 	if cfg.LLMProvider == "" {
 		cfg.LLMProvider = ProviderMock
+	}
+	if cfg.LLMProvider == ProviderOpenAI && cfg.LLMBaseURL == "" {
+		cfg.LLMBaseURL = DefaultLLMBaseURL
 	}
 	if cfg.EmbeddingProvider == "" {
 		cfg.EmbeddingProvider = ProviderMock
@@ -144,8 +168,17 @@ func (c Config) Validate() error {
 		return fmt.Errorf("API_EMBEDDING_DIM must be between 1 and %d, got %d", maxEmbeddingDim, c.EmbeddingDim)
 	}
 
-	if c.LLMProvider != ProviderMock {
-		return fmt.Errorf("API_LLM_PROVIDER %q is not available yet; supported: %q", c.LLMProvider, ProviderMock)
+	switch c.LLMProvider {
+	case ProviderMock:
+	case ProviderOpenAI:
+		if c.LLMAPIKey == "" {
+			return fmt.Errorf("API_LLM_API_KEY is required when API_LLM_PROVIDER is %q", ProviderOpenAI)
+		}
+		if c.LLMModel == "" {
+			return fmt.Errorf("API_LLM_MODEL is required when API_LLM_PROVIDER is %q", ProviderOpenAI)
+		}
+	default:
+		return fmt.Errorf("API_LLM_PROVIDER %q is not available; supported: %q, %q", c.LLMProvider, ProviderMock, ProviderOpenAI)
 	}
 	if c.EmbeddingProvider != ProviderMock {
 		return fmt.Errorf("API_EMBEDDING_PROVIDER %q is not available yet; supported: %q", c.EmbeddingProvider, ProviderMock)
@@ -178,6 +211,9 @@ func (c Config) Validate() error {
 	}
 	if c.DevSeed && c.Env != EnvDev {
 		return fmt.Errorf("dev seeding is only allowed when API_ENV is %q", EnvDev)
+	}
+	if c.RetrievalTopK < 1 || c.RetrievalTopK > maxRetrievalTopK {
+		return fmt.Errorf("API_RETRIEVAL_TOP_K must be between 1 and %d, got %d", maxRetrievalTopK, c.RetrievalTopK)
 	}
 	return nil
 }

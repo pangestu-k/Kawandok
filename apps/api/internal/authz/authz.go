@@ -61,3 +61,28 @@ func (c *Checker) Can(ctx context.Context, p auth.Principal, action, documentID 
 	}
 	return exists, nil
 }
+
+func (c *Checker) CanByUserID(ctx context.Context, userID, action, documentID string) (bool, error) {
+	roles := []string{}
+	rows, err := c.db.QueryContext(ctx, `
+		SELECT r.name FROM roles r
+		JOIN user_roles ur ON ur.role_id = r.id
+		WHERE ur.user_id = $1::uuid
+	`, userID)
+	if err != nil {
+		return false, fmt.Errorf("authz: role lookup failed: %w", err)
+	}
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			rows.Close()
+			return false, fmt.Errorf("authz: role scan failed: %w", err)
+		}
+		roles = append(roles, name)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return false, fmt.Errorf("authz: role rows failed: %w", err)
+	}
+	return c.Can(ctx, auth.Principal{ID: userID, Roles: roles}, action, documentID)
+}

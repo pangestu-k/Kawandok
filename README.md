@@ -1,6 +1,6 @@
 # Office AI Assistant — AI Agent Build Pack
 
-Status: **M2 implemented** (async ingestion worker: upload → queued → parse/chunk/embed → ready with pgvector chunks, retries and idempotent reprocessing; plus M1 ACL-protected document upload/download and the M0 scaffold). Chat/RAG arrives in M3, finance in M4. This repository documentation remains the source of truth, not evidence that later features exist.
+Status: **M3 implemented** (document RAG chat: sessions, SSE streaming with grounded answers and ACL-validated citations, hybrid FTS+vector retrieval; plus M2 ingestion worker, M1 ACL-protected documents, M0 scaffold). Finance tools arrive in M4. This repository documentation remains the source of truth, not evidence that later features exist.
 
 ## Product in one sentence
 A permission-aware internal company assistant, accessed by chat, that can locate and return original office files, answer questions grounded in their contents, and compute reliable financial results from structured data.

@@ -45,6 +45,7 @@ func TestLoad(t *testing.T) {
 				PresignTTLSeconds: 60,
 				MaxUploadBytes:    26214400,
 				DevSeed:           true,
+				RetrievalTopK:     6,
 			},
 		},
 		{
@@ -65,6 +66,7 @@ func TestLoad(t *testing.T) {
 				R2SecretAccessKey: "secret",
 				PresignTTLSeconds: 60,
 				MaxUploadBytes:    1048576,
+				RetrievalTopK:     6,
 			},
 		},
 		{
@@ -152,6 +154,7 @@ func TestLoad(t *testing.T) {
 				R2SecretAccessKey: "secret",
 				PresignTTLSeconds: 60,
 				MaxUploadBytes:    1048576,
+				RetrievalTopK:     6,
 			}),
 		},
 		{

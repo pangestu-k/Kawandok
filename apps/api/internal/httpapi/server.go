@@ -114,7 +114,8 @@ func withRecovery(log *slog.Logger, next http.Handler) http.Handler {
 
 type statusRecorder struct {
 	http.ResponseWriter
-	status int
+	status  int
+	flusher http.Flusher
 }
 
 func (rec *statusRecorder) WriteHeader(code int) {
@@ -122,10 +123,19 @@ func (rec *statusRecorder) WriteHeader(code int) {
 	rec.ResponseWriter.WriteHeader(code)
 }
 
+func (rec *statusRecorder) Flush() {
+	if rec.flusher != nil {
+		rec.flusher.Flush()
+	}
+}
+
 func (s *Server) withRequestLog(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := s.now()
 		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		if f, ok := w.(http.Flusher); ok {
+			rec.flusher = f
+		}
 		next.ServeHTTP(rec, r)
 		fields := logging.Scrub(map[string]any{
 			"event":       "http_request",
