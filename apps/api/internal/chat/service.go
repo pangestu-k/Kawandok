@@ -36,11 +36,12 @@ type Service struct {
 	retriever  Retriever
 	provider   llm.Provider
 	authorizer Authorizer
+	finance    FinanceTools
 	log        *slog.Logger
 }
 
-func NewService(store Store, retriever Retriever, provider llm.Provider, authorizer Authorizer, log *slog.Logger) *Service {
-	return &Service{store: store, retriever: retriever, provider: provider, authorizer: authorizer, log: log}
+func NewService(store Store, retriever Retriever, provider llm.Provider, authorizer Authorizer, financeTools FinanceTools, log *slog.Logger) *Service {
+	return &Service{store: store, retriever: retriever, provider: provider, authorizer: authorizer, finance: financeTools, log: log}
 }
 
 func (s *Service) CreateSession(ctx context.Context, p auth.Principal, title string) (string, error) {
@@ -146,6 +147,10 @@ func (s *Service) HandleMessage(ctx context.Context, p auth.Principal, sessionID
 		return httpx.NewAPIError(500, "INTERNAL", "could not store message")
 	}
 
+	if intent := detectFinanceIntent(text); intent != nil && s.finance != nil {
+		return s.handleFinanceIntent(ctx, p, sessionID, intent, clientRequestID, emit)
+	}
+
 	if err := emit(Event{Type: "tool_status", Data: map[string]string{"stage": "retrieval"}}); err != nil {
 		return err
 	}
@@ -201,6 +206,18 @@ func emitError(emit Emitter, code, message string) error {
 		return emitErr
 	}
 	return httpx.NewAPIError(500, code, message)
+}
+
+func emitAPIError(emit Emitter, err error) error {
+	var apiErr *httpx.APIError
+	if errors.As(err, &apiErr) {
+		return emitError(emit, apiErr.Code, apiErr.Message)
+	}
+	return emitError(emit, "INTERNAL", "internal server error")
+}
+
+func requestIDFromContext(ctx context.Context) string {
+	return httpx.RequestIDFromContext(ctx)
 }
 
 var citationPattern = regexp.MustCompile(`\[(\d{1,2})\]`)

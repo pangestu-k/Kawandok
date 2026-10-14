@@ -22,6 +22,7 @@ import (
 	"office-ai-agent/apps/api/internal/devseed"
 	"office-ai-agent/apps/api/internal/documents"
 	"office-ai-agent/apps/api/internal/embedding"
+	"office-ai-agent/apps/api/internal/finance"
 	"office-ai-agent/apps/api/internal/httpapi"
 	"office-ai-agent/apps/api/internal/llm"
 	"office-ai-agent/apps/api/internal/logging"
@@ -113,7 +114,8 @@ func run() error {
 			return err
 		}
 
-		chatSvc := chat.NewService(chat.NewRepo(db), retrieval.NewSearcher(db, embedProvider, cfg.RetrievalTopK), llmProvider, chat.NewAuthorizer(checker), log)
+		financeSvc := finance.NewService(db, auditLog, log)
+		chatSvc := chat.NewService(chat.NewRepo(db), retrieval.NewSearcher(db, embedProvider, cfg.RetrievalTopK), llmProvider, chat.NewAuthorizer(checker), financeSvc, log)
 		chat.Register(mux, &chat.Handlers{Svc: chatSvc})
 		handler = auth.Middleware(auth.NewDev(db), mux)
 

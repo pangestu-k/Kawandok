@@ -8,6 +8,7 @@ from worker.chunker import chunk_units
 from worker.db import connect
 from worker.embedder import MockEmbedder
 from worker.envelope import validate_envelope
+from worker.finance import MIME_XLSX
 from worker.parser import PermanentError, parse_document
 from worker.parser import MIME_PDF, MIME_DOCX
 from worker.storage import ObjectNotFound, StorageError, StorageFetcher
@@ -15,7 +16,7 @@ from worker.storage import ObjectNotFound, StorageError, StorageFetcher
 log = logging.getLogger("worker.ingest")
 
 PARSER_VERSION = "worker-parser-1"
-SUPPORTED_MIMES = {MIME_PDF, MIME_DOCX}
+SUPPORTED_MIMES = {MIME_PDF, MIME_DOCX, MIME_XLSX}
 
 
 class EnvelopeRejected(Exception):
@@ -164,6 +165,10 @@ class Processor:
         except StorageError as exc:
             raise RuntimeError(f"storage unavailable: {exc}") from exc
 
+        if mime_type == MIME_XLSX:
+            self._run_finance(job, data)
+            return
+
         units = parse_document(mime_type, data)
         chunks = chunk_units(units, self._chunk_target_chars, self._chunk_overlap_chars)
         vectors = self._embedder.embed([chunk.content for chunk in chunks])
@@ -200,6 +205,89 @@ class Processor:
                     WHERE id = %s::uuid
                     """,
                     (self._embedder.model_id, PARSER_VERSION, job.version_id),
+                )
+                conn.execute(
+                    """
+                    UPDATE ingestion_jobs
+                    SET status = 'ready', finished_at = now(), last_error_code = NULL,
+                        last_error_message = NULL, updated_at = now()
+                    WHERE id = %s::uuid
+                    """,
+                    (job.job_id,),
+                )
+
+    def _run_finance(self, job: ClaimedJob, data: bytes) -> None:
+        from worker.finance import parse_finance_xlsx
+
+        parsed = parse_finance_xlsx(data)
+
+        with connect(self._dsn) as conn:
+            department = conn.execute(
+                "SELECT id::text FROM departments WHERE name = %s", (parsed.department,)
+            ).fetchone()
+        if department is None:
+            raise PermanentError(
+                "DEPARTMENT_UNKNOWN",
+                f"department {parsed.department!r} from the Report sheet does not exist",
+            )
+
+        with connect(self._dsn) as conn:
+            with conn.transaction():
+                conn.execute(
+                    """
+                    DELETE FROM financial_transactions
+                    WHERE report_id IN (
+                        SELECT id FROM financial_reports WHERE document_version_id = %s::uuid
+                    )
+                    """,
+                    (job.version_id,),
+                )
+                conn.execute(
+                    "DELETE FROM financial_reports WHERE document_version_id = %s::uuid",
+                    (job.version_id,),
+                )
+                report_id = conn.execute(
+                    """
+                    INSERT INTO financial_reports
+                        (document_version_id, department_id, period_start, period_end,
+                         currency, validation_status)
+                    VALUES (%s::uuid, %s::uuid, %s, %s, %s, 'validated')
+                    RETURNING id::text
+                    """,
+                    (
+                        job.version_id,
+                        department[0],
+                        parsed.period_start,
+                        parsed.period_end,
+                        parsed.currency,
+                    ),
+                ).fetchone()[0]
+                for row in parsed.rows:
+                    conn.execute(
+                        """
+                        INSERT INTO financial_transactions
+                            (report_id, transaction_date, category, amount_minor_units,
+                             currency, source_sheet, source_row, external_transaction_ref)
+                        VALUES (%s::uuid, %s, %s, %s, %s, %s, %s, %s)
+                        """,
+                        (
+                            report_id,
+                            row.transaction_date,
+                            row.category,
+                            row.amount_minor_units,
+                            row.currency,
+                            row.source_sheet,
+                            row.source_row,
+                            row.external_transaction_ref,
+                        ),
+                    )
+                conn.execute(
+                    """
+                    UPDATE document_versions
+                    SET status = 'ready', parser_version = %s, embedding_model = NULL
+                    WHERE id = %s::uuid
+                    """,
+                    (PARSER_VERSION, job.version_id),
                 )
                 conn.execute(
                     """

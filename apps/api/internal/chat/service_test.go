@@ -127,7 +127,7 @@ func runGolden(t *testing.T, tc goldenCase) (string, []Event) {
 	t.Helper()
 	store := newFakeStore()
 	svc := NewService(store, &fakeRetriever{evidence: tc.evidence}, llm.NewGroundedMock(),
-		&fakeAuthorizer{readable: tc.readable}, testLogger)
+		&fakeAuthorizer{readable: tc.readable}, nil, testLogger)
 
 	sessID, err := svc.CreateSession(context.Background(), tc.principal, "")
 	if err != nil {
@@ -242,7 +242,7 @@ func TestGoldenInvalidCitationDropped(t *testing.T) {
 	svc := NewService(store, &fakeRetriever{evidence: []retrieval.Evidence{
 		{CitationRef: "1", ChunkID: "chunk-1", DocumentID: "doc-1", VersionID: "ver-1",
 			Title: "Dok", Content: "Fakta sah."},
-	}}, invalid, &fakeAuthorizer{readable: map[string]bool{"doc-1": true}}, testLogger)
+	}}, invalid, &fakeAuthorizer{readable: map[string]bool{"doc-1": true}}, nil, testLogger)
 
 	sessID, _ := svc.CreateSession(context.Background(), auth.Principal{ID: "u1"}, "")
 	var done map[string]any
@@ -307,7 +307,7 @@ func (f failingProvider) Stream(ctx context.Context, req llm.CompleteRequest, fn
 func TestSessionOwnershipEnforced(t *testing.T) {
 	store := newFakeStore()
 	svc := NewService(store, &fakeRetriever{}, llm.NewGroundedMock(),
-		&fakeAuthorizer{readable: map[string]bool{}}, testLogger)
+		&fakeAuthorizer{readable: map[string]bool{}}, nil, testLogger)
 
 	owner := auth.Principal{ID: "u-owner"}
 	other := auth.Principal{ID: "u-other"}
@@ -329,7 +329,7 @@ func TestClientRequestIDReplay(t *testing.T) {
 	store := newFakeStore()
 	svc := NewService(store, &fakeRetriever{evidence: []retrieval.Evidence{
 		{CitationRef: "1", ChunkID: "c1", DocumentID: "d1", VersionID: "v1", Title: "T", Content: "isi fakta."},
-	}}, llm.NewGroundedMock(), &fakeAuthorizer{readable: map[string]bool{"d1": true}}, testLogger)
+	}}, llm.NewGroundedMock(), &fakeAuthorizer{readable: map[string]bool{"d1": true}}, nil, testLogger)
 
 	p := auth.Principal{ID: "u1"}
 	sessID, _ := svc.CreateSession(context.Background(), p, "")
@@ -362,6 +362,7 @@ type collected struct {
 	textDeltas []string
 	citations  int
 	done       map[string]any
+	errorCode  string
 }
 
 func collectEvents(t *testing.T, svc *Service, p auth.Principal, sessID, question, requestID string) collected {
@@ -375,10 +376,17 @@ func collectEvents(t *testing.T, svc *Service, p auth.Principal, sessID, questio
 			out.citations++
 		case "done":
 			out.done = ev.Data.(map[string]any)
+		case "error":
+			out.errorCode = ev.Data.(map[string]string)["code"]
 		}
 		return nil
 	})
 	if err != nil {
+		var apiErr *httpx.APIError
+		if errors.As(err, &apiErr) {
+			out.errorCode = apiErr.Code
+			return out
+		}
 		t.Fatalf("HandleMessage() error: %v", err)
 	}
 	return out
@@ -389,7 +397,7 @@ func TestHistoryFiltersRevokedCitations(t *testing.T) {
 	svc := NewService(store, &fakeRetriever{evidence: []retrieval.Evidence{
 		{CitationRef: "1", ChunkID: "c1", DocumentID: "doc-kept", VersionID: "v1", Title: "K", Content: "tetap ada."},
 		{CitationRef: "2", ChunkID: "c2", DocumentID: "doc-revoked", VersionID: "v2", Title: "R", Content: "sudah dicabut."},
-	}}, llm.NewGroundedMock(), &fakeAuthorizer{readable: map[string]bool{"doc-kept": true}}, testLogger)
+	}}, llm.NewGroundedMock(), &fakeAuthorizer{readable: map[string]bool{"doc-kept": true}}, nil, testLogger)
 
 	p := auth.Principal{ID: "u1"}
 	sessID, _ := svc.CreateSession(context.Background(), p, "")

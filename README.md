@@ -1,6 +1,6 @@
-# Office AI Assistant — AI Agent Build Pack
+﻿# Office AI Assistant â€” AI Agent Build Pack
 
-Status: **M3 implemented** (document RAG chat: sessions, SSE streaming with grounded answers and ACL-validated citations, hybrid FTS+vector retrieval; plus M2 ingestion worker, M1 ACL-protected documents, M0 scaffold). Finance tools arrive in M4. This repository documentation remains the source of truth, not evidence that later features exist.
+Status: **M4 implemented** (structured finance: XLSX template import with row provenance, predefined read-only aggregate tools via chat with deny-by-default department scoping and audit, exact fixture totals; plus M3 RAG chat, M2 ingestion worker, M1 ACL-protected documents, M0 scaffold). Production hardening (M5) remains. This repository documentation remains the source of truth, not evidence that later features exist.
 
 ## Product in one sentence
 A permission-aware internal company assistant, accessed by chat, that can locate and return original office files, answer questions grounded in their contents, and compute reliable financial results from structured data.
@@ -35,7 +35,7 @@ make secret-scan   # gitleaks if installed, else pattern fallback
 make down          # stop the dev stack
 ```
 
-Configuration template: `infra/.env.example` — copy to `.env` and fill in before using real providers. Never commit `.env` or real credentials. Dev-only database passwords exist in migration 000001 and must be rotated before any shared environment (see `docs/DECISIONS.md`).
+Configuration template: `infra/.env.example` â€” copy to `.env` and fill in before using real providers. Never commit `.env` or real credentials. Dev-only database passwords exist in migration 000001 and must be rotated before any shared environment (see `docs/DECISIONS.md`).
 
 Development auth fixture (M1): authenticate as a seeded user with `Authorization: Bearer dev-<email>`:
 
@@ -51,21 +51,21 @@ If your editor reports `cannot find package ... in GOROOT or GOPATH`, the toolin
 
 1. Open the **repository root** (`office-ai-agent`) in your editor, not a subfolder.
 2. VS Code: reload the Go language server (`Go: Restart Language Server`) or reload the window.
-3. GoLand: Settings → Go → Go Modules → enable Go modules integration; GOROOT must point to Go 1.22.
+3. GoLand: Settings â†’ Go â†’ Go Modules â†’ enable Go modules integration; GOROOT must point to Go 1.22.
 4. Recommended machine-wide fix: `setx GO111MODULE on` (then reopen the editor).
 
 The CLI is unaffected: `go build ./...` / `go test ./...` inside `apps/api` and from the repository root (via `go.work`) both pass.
 
 ## Read these files, in order
-1. `AGENTS.md` — rules for coding agents
-2. `docs/01-PRD.md` — scope and acceptance criteria
-3. `docs/02-ARCHITECTURE.md` — boundaries and flows
-4. `docs/03-DATA-MODEL.md` — database and storage contracts
-5. `docs/04-AI-RAG-AND-TOOLS.md` — retrieval, agents and financial correctness
-6. `docs/05-SECURITY.md` — confidentiality and authorization
-7. `docs/06-API-CONTRACTS.md` — endpoints and asynchronous behaviors
-8. `docs/07-DELIVERY-PLAN.md` — incremental build order, tests and definition of done
-9. `prompts/START-HERE.md` — prompt to give the implementing agent
+1. `AGENTS.md` â€” rules for coding agents
+2. `docs/01-PRD.md` â€” scope and acceptance criteria
+3. `docs/02-ARCHITECTURE.md` â€” boundaries and flows
+4. `docs/03-DATA-MODEL.md` â€” database and storage contracts
+5. `docs/04-AI-RAG-AND-TOOLS.md` â€” retrieval, agents and financial correctness
+6. `docs/05-SECURITY.md` â€” confidentiality and authorization
+7. `docs/06-API-CONTRACTS.md` â€” endpoints and asynchronous behaviors
+8. `docs/07-DELIVERY-PLAN.md` â€” incremental build order, tests and definition of done
+9. `prompts/START-HERE.md` â€” prompt to give the implementing agent
 
 ## Working assumptions to confirm before launch
 Single company initially, separate departments and users; admin uploads files; PDF/DOCX/XLSX; Indonesian first; synthetic demo files only until company security and data policies are approved. Scope and integration choices are configurable; **do not invent a production IAM or data retention policy**.

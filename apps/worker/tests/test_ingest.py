@@ -274,6 +274,77 @@ class ProcessorTests(unittest.TestCase):
         )
         self.assertEqual(outcome, "skipped")
 
+    def test_xlsx_import_creates_financial_rows_idempotently(self) -> None:
+        import datetime
+        import io
+
+        import openpyxl
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Report"
+        ws.append(["field", "value"])
+        ws.append(["period_start", datetime.date(2026, 1, 1)])
+        ws.append(["period_end", datetime.date(2026, 2, 28)])
+        ws.append(["currency", "IDR"])
+        ws.append(["department", "Finance"])
+        ws_tx = wb.create_sheet("Transactions")
+        ws_tx.append(["transaction_date", "category", "amount", "currency", "external_transaction_ref"])
+        ws_tx.append([datetime.date(2026, 1, 10), "revenue", 12_000_000, "IDR", "TRX-001"])
+        ws_tx.append([datetime.date(2026, 1, 15), "transport", 5_000_000, "IDR", "TRX-002"])
+        ws_tx.append([datetime.date(2026, 2, 20), "revenue", 15_000_000, "IDR", "TRX-003"])
+        buffer = io.BytesIO()
+        wb.save(buffer)
+        xlsx_bytes = buffer.getvalue()
+
+        self.conn.execute(
+            "UPDATE document_versions SET mime_type = %s", (
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",)
+        )
+        fetcher = self.fetcher_with_content(xlsx_bytes)
+        processor = self.new_processor(fetcher)
+        envelope = make_envelope_bytes(self.job_id, self.version_id, self.document_id)
+
+        self.assertEqual(processor.handle_message(envelope), "processed")
+
+        report = self.conn.execute(
+            "SELECT currency, validation_status FROM financial_reports WHERE document_version_id = %s::uuid",
+            (self.version_id,),
+        ).fetchone()
+        self.assertEqual(report[0], "IDR")
+        self.assertEqual(report[1], "validated")
+
+        total = self.conn.execute(
+            """
+            SELECT sum(t.amount_minor_units) FROM financial_transactions t
+            JOIN financial_reports f ON f.id = t.report_id
+            WHERE f.document_version_id = %s::uuid
+            """,
+            (self.version_id,),
+        ).fetchone()[0]
+        self.assertEqual(int(total), 3_200_000_000)
+
+        ref = self.conn.execute(
+            "SELECT source_row FROM financial_transactions WHERE external_transaction_ref = 'TRX-002'"
+        ).fetchone()[0]
+        self.assertEqual(ref, 3)
+
+        self.conn.execute(
+            "UPDATE ingestion_jobs SET status = 'queued', run_after = now() - interval '1 minute' "
+            "WHERE id = %s::uuid",
+            (self.job_id,),
+        )
+        self.assertEqual(processor.handle_message(envelope), "processed")
+        total_again = self.conn.execute(
+            """
+            SELECT sum(t.amount_minor_units) FROM financial_transactions t
+            JOIN financial_reports f ON f.id = t.report_id
+            WHERE f.document_version_id = %s::uuid
+            """,
+            (self.version_id,),
+        ).fetchone()[0]
+        self.assertEqual(int(total_again), 3_200_000_000)
+
 
 if __name__ == "__main__":
     unittest.main()
