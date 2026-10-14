@@ -13,6 +13,7 @@ import (
 	"office-ai-agent/apps/api/internal/authz"
 	"office-ai-agent/apps/api/internal/httpx"
 	"office-ai-agent/apps/api/internal/llm"
+	"office-ai-agent/apps/api/internal/metrics"
 	"office-ai-agent/apps/api/internal/retrieval"
 )
 
@@ -189,7 +190,7 @@ func (s *Service) HandleMessage(ctx context.Context, p auth.Principal, sessionID
 
 func (s *Service) streamLLM(ctx context.Context, prompt []llm.Message, emit Emitter) (string, error) {
 	var sb strings.Builder
-	_, err := s.provider.Stream(ctx, llm.CompleteRequest{Messages: prompt}, func(delta string) error {
+	resp, err := s.provider.Stream(ctx, llm.CompleteRequest{Messages: prompt}, func(delta string) error {
 		sb.WriteString(delta)
 		return emit(Event{Type: "text_delta", Data: map[string]string{"delta": delta}})
 	})
@@ -197,6 +198,7 @@ func (s *Service) streamLLM(ctx context.Context, prompt []llm.Message, emit Emit
 		s.log.Error("llm stream failed", "error", err)
 		return "", emitError(emit, "LLM_UNAVAILABLE", "the assistant is temporarily unavailable")
 	}
+	metrics.ObserveLLMTokens(s.provider.Name(), int64(resp.Usage.InputTokens), int64(resp.Usage.OutputTokens))
 	return sb.String(), nil
 }
 

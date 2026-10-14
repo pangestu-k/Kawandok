@@ -36,6 +36,9 @@ func New(cfg config.Config, log *slog.Logger, pinger Pinger) *Server {
 func (s *Server) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /healthz", s.handleHealthz)
 	mux.HandleFunc("GET /readyz", s.handleReadyz)
+	if s.cfg.MetricsEnabled {
+		mux.Handle("GET /metrics", MetricsHandler())
+	}
 }
 
 func (s *Server) Handler() http.Handler {
@@ -45,9 +48,11 @@ func (s *Server) Handler() http.Handler {
 	return s.withRequestLog(secureHeaders(withRequestID(withRecovery(s.log, mux))))
 }
 
-func Chain(log *slog.Logger, next http.Handler) http.Handler {
+func Chain(log *slog.Logger, ratePerMinute int, next http.Handler) http.Handler {
 	s := &Server{log: log, now: time.Now}
-	return secureHeaders(s.withRequestLog(withRequestID(withRecovery(log, next))))
+	handler := secureHeaders(s.withRequestLog(withRequestID(withRecovery(log, next))))
+	handler = rateLimitMiddleware(ratePerMinute, ratePerMinute/2+1, handler)
+	return metricsMiddleware(handler)
 }
 
 func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {

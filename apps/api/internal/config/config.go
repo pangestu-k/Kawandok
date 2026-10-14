@@ -22,6 +22,7 @@ const (
 	DefaultMaxUploadBytes    = 26_214_400
 	DefaultRetrievalTopK     = 6
 	DefaultLLMBaseURL        = "https://api.openai.com/v1"
+	DefaultRateLimitPerMinute = 120
 	maxEmbeddingDim          = 10000
 	maxPresignTTLSeconds     = 900
 	maxUploadBytes           = 104_857_600
@@ -47,10 +48,13 @@ type Config struct {
 	MaxUploadBytes    int64
 	DevSeed           bool
 
-	LLMBaseURL    string
-	LLMModel      string
-	LLMAPIKey     string
-	RetrievalTopK int
+	LLMBaseURL     string
+	LLMModel       string
+	LLMAPIKey      string
+	RetrievalTopK  int
+
+	RateLimitPerMinute int
+	MetricsEnabled     bool
 }
 
 type Getter func(key string) string
@@ -74,6 +78,22 @@ func Load(getenv Getter) (Config, error) {
 		LLMBaseURL: strings.TrimSpace(getenv("API_LLM_BASE_URL")),
 		LLMModel:   strings.TrimSpace(getenv("API_LLM_MODEL")),
 		LLMAPIKey:  strings.TrimSpace(getenv("API_LLM_API_KEY")),
+	}
+
+	if raw := strings.TrimSpace(getenv("API_RATE_LIMIT_RPM")); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err != nil {
+			return Config{}, fmt.Errorf("API_RATE_LIMIT_RPM: %w", err)
+		} else {
+			cfg.RateLimitPerMinute = parsed
+		}
+	} else {
+		cfg.RateLimitPerMinute = DefaultRateLimitPerMinute
+	}
+	switch strings.ToLower(strings.TrimSpace(getenv("API_METRICS_ENABLED"))) {
+	case "0", "false", "no":
+		cfg.MetricsEnabled = false
+	default:
+		cfg.MetricsEnabled = true
 	}
 
 	if raw := strings.TrimSpace(getenv("API_EMBEDDING_DIM")); raw == "" {
@@ -214,6 +234,9 @@ func (c Config) Validate() error {
 	}
 	if c.RetrievalTopK < 1 || c.RetrievalTopK > maxRetrievalTopK {
 		return fmt.Errorf("API_RETRIEVAL_TOP_K must be between 1 and %d, got %d", maxRetrievalTopK, c.RetrievalTopK)
+	}
+	if c.RateLimitPerMinute < 0 || c.RateLimitPerMinute > 100000 {
+		return fmt.Errorf("API_RATE_LIMIT_RPM must be between 0 and 100000, got %d", c.RateLimitPerMinute)
 	}
 	return nil
 }

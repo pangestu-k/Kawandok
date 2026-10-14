@@ -1,4 +1,4 @@
-package main
+﻿package main
 
 import (
 	"context"
@@ -124,7 +124,7 @@ func run() error {
 		go sweeperLoop(ctx, svc, log)
 		httpServer := &http.Server{
 			Addr:              ":" + cfg.Port,
-			Handler:           httpapi.Chain(log, handler),
+			Handler:           httpapi.Chain(log, cfg.RateLimitPerMinute, handler),
 			ReadHeaderTimeout: 5 * time.Second,
 		}
 		return serve(ctx, httpServer, log, cfg)
@@ -132,7 +132,7 @@ func run() error {
 
 	httpServer := &http.Server{
 		Addr:              ":" + cfg.Port,
-		Handler:           httpapi.Chain(log, handler),
+		Handler:           httpapi.Chain(log, cfg.RateLimitPerMinute, handler),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	log.Warn("database not configured; starting in health-only mode")

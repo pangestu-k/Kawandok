@@ -99,6 +99,28 @@ func (s *Service) MaxBytes() int64 {
 	return s.maxBytes
 }
 
+type Department struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+}
+
+func (s *Service) ListDepartments(ctx context.Context) ([]Department, error) {
+	rows, err := s.db.QueryContext(ctx, `SELECT id::text, name FROM departments ORDER BY name`)
+	if err != nil {
+		s.log.Error("department list failed", "error", err)
+		return nil, httpx.NewAPIError(500, "INTERNAL", "department listing failed")
+	}
+	defer rows.Close()
+	out := []Department{}
+	for rows.Next() {
+		var d Department
+		if err := rows.Scan(&d.ID, &d.Name); err == nil {
+			out = append(out, d)
+		}
+	}
+	return out, rows.Err()
+}
+
 type UploadResult struct {
 	Document Document `json:"-"`
 }

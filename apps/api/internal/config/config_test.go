@@ -1,4 +1,4 @@
-package config
+﻿package config
 
 import (
 	"strings"
@@ -46,6 +46,8 @@ func TestLoad(t *testing.T) {
 				MaxUploadBytes:    26214400,
 				DevSeed:           true,
 				RetrievalTopK:     6,
+RateLimitPerMinute: 120,
+MetricsEnabled:    true,
 			},
 		},
 		{
@@ -67,6 +69,8 @@ func TestLoad(t *testing.T) {
 				PresignTTLSeconds: 60,
 				MaxUploadBytes:    1048576,
 				RetrievalTopK:     6,
+RateLimitPerMinute: 120,
+MetricsEnabled:    true,
 			},
 		},
 		{
@@ -155,6 +159,8 @@ func TestLoad(t *testing.T) {
 				PresignTTLSeconds: 60,
 				MaxUploadBytes:    1048576,
 				RetrievalTopK:     6,
+RateLimitPerMinute: 120,
+MetricsEnabled:    true,
 			}),
 		},
 		{

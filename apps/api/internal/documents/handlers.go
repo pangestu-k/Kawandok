@@ -29,6 +29,20 @@ func Register(mux *http.ServeMux, h *Handlers) {
 	mux.HandleFunc("GET /v1/documents/{id}/download", h.download)
 	mux.HandleFunc("GET /v1/documents/{id}/versions/{versionId}/status", h.versionStatus)
 	mux.HandleFunc("POST /v1/documents/{id}/reindex", h.reindex)
+	mux.HandleFunc("GET /v1/departments", h.listDepartments)
+}
+
+func (h *Handlers) listDepartments(w http.ResponseWriter, r *http.Request) {
+	if _, ok := h.principal(r); !ok {
+		httpx.WriteError(w, r, httpx.ErrUnauthorized())
+		return
+	}
+	rows, err := h.Svc.ListDepartments(r.Context())
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"departments": rows})
 }
 
 func (h *Handlers) reindex(w http.ResponseWriter, r *http.Request) {
