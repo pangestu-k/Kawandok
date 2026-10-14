@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import io
 import unittest
+from unittest.mock import patch
 
-from worker.embedder import MockEmbedder
+from worker.embedder import MockEmbedder, OpenAIEmbedder
 
 
 class MockEmbedderTests(unittest.TestCase):
@@ -30,6 +32,18 @@ class MockEmbedderTests(unittest.TestCase):
 
     def test_model_id(self) -> None:
         self.assertEqual(MockEmbedder(8).model_id, "mock-embedding-v1")
+
+    def test_openai_embedder_preserves_response_order(self) -> None:
+        class Response:
+            def __enter__(self):
+                return io.BytesIO(b'{"data":[{"index":1,"embedding":[3,4]},{"index":0,"embedding":[1,2]}]}')
+
+            def __exit__(self, *args):
+                return False
+
+        with patch("urllib.request.urlopen", return_value=Response()):
+            vectors = OpenAIEmbedder("https://example.test/v1", "key", "model", 2).embed(["one", "two"])
+        self.assertEqual(vectors, [[1.0, 2.0], [3.0, 4.0]])
 
 
 if __name__ == "__main__":

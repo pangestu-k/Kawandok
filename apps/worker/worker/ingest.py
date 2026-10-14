@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from worker.chunker import chunk_units
 from worker.db import connect
-from worker.embedder import MockEmbedder
+from worker.embedder import Embedder
 from worker.envelope import validate_envelope
 from worker.finance import MIME_XLSX
 from worker.parser import PermanentError, parse_document
@@ -40,7 +40,7 @@ class Processor:
         self,
         dsn: str,
         fetcher: StorageFetcher,
-        embedder: MockEmbedder,
+        embedder: Embedder,
         max_payload_bytes: int,
         chunk_target_chars: int = 1200,
         chunk_overlap_chars: int = 150,

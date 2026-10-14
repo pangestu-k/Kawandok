@@ -80,3 +80,7 @@ Use for new decisions made during implementation. Record date, decision, options
 - Learning/dev uses short-lived, server-issued HS256 JWTs. The signing key stays server-side; the browser requests a token only for an active seeded user via a dev-only endpoint. This is deliberately not a production login mechanism.
 - JWT `sub` maps to `users.external_subject` (seeded as `dev:<email>`). A future OIDC verifier will validate issuer/JWKS/audience and reuse this mapping, preserving existing application roles, departments, and ACLs.
 - Production startup remains blocked until an OIDC provider and its issuer/audience policy are selected.
+
+## M3 embedding provider preparation (2026-10-14)
+- API and worker support `mock` (default) and an OpenAI-compatible `/embeddings` adapter. Both must use the same provider, model, endpoint, API key and vector dimension; a model/dimension change requires a re-index and matching migration dimension.
+- Cloud embeddings are never used in automated tests. Adapter tests use local mocked HTTP responses, and document text is not logged by the adapters.

@@ -40,6 +40,9 @@ type Config struct {
 	LLMProvider       string
 	EmbeddingProvider string
 	EmbeddingDim      int
+	EmbeddingBaseURL  string
+	EmbeddingModel    string
+	EmbeddingAPIKey   string
 
 	StorageBackend    string
 	StorageBucket     string
@@ -74,6 +77,9 @@ func Load(getenv Getter) (Config, error) {
 		RedisAddr:         strings.TrimSpace(getenv("API_REDIS_ADDR")),
 		LLMProvider:       strings.TrimSpace(getenv("API_LLM_PROVIDER")),
 		EmbeddingProvider: strings.TrimSpace(getenv("API_EMBEDDING_PROVIDER")),
+		EmbeddingBaseURL:  strings.TrimSpace(getenv("API_EMBEDDING_BASE_URL")),
+		EmbeddingModel:    strings.TrimSpace(getenv("API_EMBEDDING_MODEL")),
+		EmbeddingAPIKey:   strings.TrimSpace(getenv("API_EMBEDDING_API_KEY")),
 
 		StorageBackend:    strings.ToLower(strings.TrimSpace(getenv("API_STORAGE_BACKEND"))),
 		StorageBucket:     strings.TrimSpace(getenv("API_STORAGE_BUCKET")),
@@ -223,8 +229,14 @@ func (c Config) Validate() error {
 	default:
 		return fmt.Errorf("API_LLM_PROVIDER %q is not available; supported: %q, %q", c.LLMProvider, ProviderMock, ProviderOpenAI)
 	}
-	if c.EmbeddingProvider != ProviderMock {
-		return fmt.Errorf("API_EMBEDDING_PROVIDER %q is not available yet; supported: %q", c.EmbeddingProvider, ProviderMock)
+	switch c.EmbeddingProvider {
+	case ProviderMock:
+	case ProviderOpenAI:
+		if c.EmbeddingBaseURL == "" || c.EmbeddingModel == "" || c.EmbeddingAPIKey == "" {
+			return fmt.Errorf("API_EMBEDDING_BASE_URL, API_EMBEDDING_MODEL, and API_EMBEDDING_API_KEY are required when API_EMBEDDING_PROVIDER is %q", ProviderOpenAI)
+		}
+	default:
+		return fmt.Errorf("API_EMBEDDING_PROVIDER %q is not available; supported: %q, %q", c.EmbeddingProvider, ProviderMock, ProviderOpenAI)
 	}
 
 	switch c.StorageBackend {

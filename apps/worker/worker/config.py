@@ -6,6 +6,7 @@ import socket
 
 ALLOWED_ENVS = frozenset({"dev", "prod"})
 ALLOWED_STORAGE_BACKENDS = frozenset({"memory", "s3"})
+ALLOWED_EMBEDDING_PROVIDERS = frozenset({"mock", "openai"})
 MAX_ALLOWED_PAYLOAD_BYTES = 16 * 1024 * 1024
 DEFAULT_MAX_PAYLOAD_BYTES = 1_048_576
 
@@ -24,6 +25,10 @@ class WorkerConfig:
     consumer_group: str
     consumer_name: str
     embedding_dim: int
+    embedding_provider: str
+    embedding_base_url: str
+    embedding_model: str
+    embedding_api_key: str
     chunk_target_chars: int
     chunk_overlap_chars: int
     poll_interval_seconds: float
@@ -46,6 +51,10 @@ class WorkerConfig:
             consumer_group=getenv("WORKER_CONSUMER_GROUP", "workers"),
             consumer_name=getenv("WORKER_CONSUMER_NAME", _default_consumer_name()),
             embedding_dim=_int_env(getenv, "WORKER_EMBEDDING_DIM", 1536),
+            embedding_provider=getenv("WORKER_EMBEDDING_PROVIDER", "mock").strip().lower(),
+            embedding_base_url=getenv("WORKER_EMBEDDING_BASE_URL", "").strip(),
+            embedding_model=getenv("WORKER_EMBEDDING_MODEL", "").strip(),
+            embedding_api_key=getenv("WORKER_EMBEDDING_API_KEY", "").strip(),
             chunk_target_chars=_int_env(getenv, "WORKER_CHUNK_TARGET_CHARS", 1200),
             chunk_overlap_chars=_int_env(getenv, "WORKER_CHUNK_OVERLAP_CHARS", 150),
             poll_interval_seconds=_float_env(getenv, "WORKER_POLL_INTERVAL_SECONDS", 5.0),
@@ -83,6 +92,12 @@ class WorkerConfig:
             raise ConfigError("WORKER_CONSUMER_GROUP and WORKER_CONSUMER_NAME must be non-empty")
         if not 1 <= self.embedding_dim <= 10_000:
             raise ConfigError(f"WORKER_EMBEDDING_DIM must be between 1 and 10000, got {self.embedding_dim}")
+        if self.embedding_provider not in ALLOWED_EMBEDDING_PROVIDERS:
+            raise ConfigError(f"WORKER_EMBEDDING_PROVIDER must be one of {sorted(ALLOWED_EMBEDDING_PROVIDERS)}")
+        if self.embedding_provider == "openai" and not all(
+            (self.embedding_base_url, self.embedding_model, self.embedding_api_key)
+        ):
+            raise ConfigError("WORKER_EMBEDDING_BASE_URL, WORKER_EMBEDDING_MODEL, and WORKER_EMBEDDING_API_KEY are required for openai")
         if not 100 <= self.chunk_target_chars <= 100_000:
             raise ConfigError(
                 f"WORKER_CHUNK_TARGET_CHARS must be between 100 and 100000, got {self.chunk_target_chars}"

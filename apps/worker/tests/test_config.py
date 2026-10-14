@@ -26,6 +26,7 @@ class WorkerConfigTests(unittest.TestCase):
         self.assertEqual(cfg.consumer_group, "workers")
         self.assertTrue(cfg.consumer_name)
         self.assertEqual(cfg.embedding_dim, 1536)
+        self.assertEqual(cfg.embedding_provider, "mock")
         self.assertEqual(cfg.chunk_target_chars, 1200)
         self.assertEqual(cfg.chunk_overlap_chars, 150)
         self.assertEqual(cfg.poll_interval_seconds, 5.0)
@@ -93,6 +94,20 @@ class WorkerConfigTests(unittest.TestCase):
         env["WORKER_MAX_PAYLOAD_BYTES"] = "big"
         with self.assertRaises(ConfigError):
             WorkerConfig.from_env(env_getter(env))
+
+    def test_openai_embedding_requires_configuration(self) -> None:
+        env = base_env()
+        env["WORKER_EMBEDDING_PROVIDER"] = "openai"
+        with self.assertRaises(ConfigError):
+            WorkerConfig.from_env(env_getter(env))
+        env.update(
+            {
+                "WORKER_EMBEDDING_BASE_URL": "https://provider.example/v1",
+                "WORKER_EMBEDDING_MODEL": "test-model",
+                "WORKER_EMBEDDING_API_KEY": "test-key",
+            }
+        )
+        self.assertEqual(WorkerConfig.from_env(env_getter(env)).embedding_provider, "openai")
 
 
 if __name__ == "__main__":

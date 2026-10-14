@@ -8,7 +8,7 @@ import threading
 import redis
 
 from worker.config import WorkerConfig
-from worker.embedder import MockEmbedder
+from worker.embedder import MockEmbedder, OpenAIEmbedder
 from worker.ingest import Processor
 from worker.queue import Consumer
 from worker.storage import build_fetcher
@@ -29,7 +29,7 @@ def main() -> int:
     processor = Processor(
         dsn=cfg.database_url,
         fetcher=build_fetcher(cfg),
-        embedder=MockEmbedder(cfg.embedding_dim),
+        embedder=build_embedder(cfg),
         max_payload_bytes=cfg.max_payload_bytes,
         chunk_target_chars=cfg.chunk_target_chars,
         chunk_overlap_chars=cfg.chunk_overlap_chars,
@@ -74,6 +74,12 @@ def main() -> int:
     )
     log.info("worker stopped")
     return 0
+
+
+def build_embedder(cfg: WorkerConfig):
+    if cfg.embedding_provider == "openai":
+        return OpenAIEmbedder(cfg.embedding_base_url, cfg.embedding_api_key, cfg.embedding_model, cfg.embedding_dim)
+    return MockEmbedder(cfg.embedding_dim)
 
 
 if __name__ == "__main__":

@@ -108,9 +108,26 @@ func TestLoad(t *testing.T) {
 			wantErr: true,
 		},
 		{
-			name:    "unknown embedding provider rejected",
+			name:    "openai embedding without configuration rejected",
 			env:     map[string]string{"API_EMBEDDING_PROVIDER": "openai"},
 			wantErr: true,
+		},
+		{
+			name: "openai embedding configuration is accepted",
+			env: with(fullValidEnv(), func(e map[string]string) {
+				e["API_EMBEDDING_PROVIDER"] = "openai"
+				e["API_EMBEDDING_BASE_URL"] = "https://provider.example/v1"
+				e["API_EMBEDDING_MODEL"] = "test-model"
+				e["API_EMBEDDING_API_KEY"] = "test-key"
+			}),
+			want: withCfg(Config{
+				Env: "prod", Port: "9090", DatabaseURL: "postgres://localhost/db", RedisAddr: "127.0.0.1:6380",
+				LLMProvider: "mock", EmbeddingProvider: "openai", EmbeddingDim: 768,
+				EmbeddingBaseURL: "https://provider.example/v1", EmbeddingModel: "test-model", EmbeddingAPIKey: "test-key",
+				StorageBackend: "s3", StorageBucket: "docs", S3Endpoint: "https://acct.r2.cloudflarestorage.com", R2AccessKeyID: "key", R2SecretAccessKey: "secret",
+				PresignTTLSeconds: 60, MaxUploadBytes: 1048576, RetrievalTopK: 6, RateLimitPerMinute: 120, MetricsEnabled: true,
+				JWTIssuer: "office-ai-dev", JWTAudience: "office-ai-api", JWTSigningKey: "01234567890123456789012345678901", JWTTTLMinutes: 60,
+			}),
 		},
 		{
 			name:    "invalid storage backend rejected",

@@ -101,12 +101,9 @@ func run() error {
 		)
 		documents.Register(mux, &documents.Handlers{Svc: svc, Log: log})
 
-		var embedProvider embedding.Provider
-		if cfg.EmbeddingProvider == config.ProviderMock {
-			embedProvider, err = embedding.NewMock(cfg.EmbeddingDim)
-			if err != nil {
-				return err
-			}
+		embedProvider, err := buildEmbeddingProvider(cfg)
+		if err != nil {
+			return err
 		}
 
 		llmProvider, err := buildLLMProvider(cfg)
@@ -154,6 +151,13 @@ func buildLLMProvider(cfg config.Config) (llm.Provider, error) {
 	default:
 		return llm.NewGroundedMock(), nil
 	}
+}
+
+func buildEmbeddingProvider(cfg config.Config) (embedding.Provider, error) {
+	if cfg.EmbeddingProvider == config.ProviderOpenAI {
+		return embedding.NewOpenAI(embedding.OpenAIConfig{BaseURL: cfg.EmbeddingBaseURL, APIKey: cfg.EmbeddingAPIKey, Model: cfg.EmbeddingModel, Dim: cfg.EmbeddingDim})
+	}
+	return embedding.NewMock(cfg.EmbeddingDim)
 }
 
 func ensureBucketWithRetry(ctx context.Context, store *storage.S3, log *slog.Logger) error {
