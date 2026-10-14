@@ -26,4 +26,5 @@ venv/
 Thumbs.db
 
 /tmp/
+/backups/
 /fixtures/private/

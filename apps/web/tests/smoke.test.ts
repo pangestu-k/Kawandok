@@ -9,7 +9,7 @@ import ChatPage from "../app/page";
 describe("web smoke", () => {
   it("renders the chat placeholder", () => {
     const html = renderToString(createElement(ChatPage));
-    expect(html).toContain("Office AI Assistant");
+    expect(html).toContain("Sesi baru");
     expect(html).toContain("Tulis pertanyaan");
   });
 

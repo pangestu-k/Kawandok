@@ -94,6 +94,11 @@ async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
     ...init,
     headers: { ...authHeaders(), ...(init?.headers ?? {}) },
   });
+  if (resp.status === 401 && typeof window !== "undefined") {
+    logout();
+    window.location.href = "/login";
+    throw new ApiError(401, "UNAUTHORIZED", "Sesi berakhir; silakan masuk kembali.");
+  }
   if (!resp.ok) throw await parseError(resp);
   return resp;
 }
@@ -124,11 +129,43 @@ export async function fetchMessages(sessionId: string): Promise<ChatMessage[]> {
   return body.messages ?? [];
 }
 
-export async function listDocuments(query: string, status: string): Promise<{ items: DocumentRow[]; total: number }> {
+export async function listDocuments(
+  query: string,
+  status: string,
+  page = 1,
+  pageSize = 20
+): Promise<{ items: DocumentRow[]; total: number; page: number; page_size: number }> {
   const params = new URLSearchParams();
   if (query) params.set("query", query);
   if (status) params.set("status", status);
+  params.set("page", String(page));
+  params.set("page_size", String(pageSize));
   return jsonFetch(`/v1/documents?${params.toString()}`);
+}
+
+export async function getDocument(documentId: string): Promise<DocumentRow> {
+  return jsonFetch(`/v1/documents/${documentId}`);
+}
+
+export function clearSessionId(): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(SESSION_KEY);
+}
+
+export function getSessionId(): string | null {
+  if (typeof window === "undefined") return null;
+  return window.localStorage.getItem(SESSION_KEY);
+}
+
+export function setSessionId(id: string): void {
+  window.localStorage.setItem(SESSION_KEY, id);
+}
+
+export function newRequestId(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return `req-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 }
 
 export async function uploadDocument(input: {
@@ -192,6 +229,11 @@ export async function streamChatMessage(
     body: JSON.stringify({ message, client_request_id: clientRequestId }),
   });
 
+  if (resp.status === 401 && typeof window !== "undefined") {
+    logout();
+    window.location.href = "/login";
+    throw new ApiError(401, "UNAUTHORIZED", "Sesi berakhir; silakan masuk kembali.");
+  }
   if (!resp.ok || !resp.body) {
     throw await parseError(resp);
   }

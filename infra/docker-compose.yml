@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: pgvector/pgvector:pg16
+    image: pgvector/pgvector:pg16@sha256:7b822b0aac60967beb1ea5e576b8602c94c300a157d187f385ae3e0da199b90a
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-migrator}
@@ -17,7 +17,7 @@ services:
       retries: 10
 
   redis:
-    image: redis:7.2.5-alpine
+    image: redis:7.2.5-alpine@sha256:6aaf3f5e6bc8a592fbfe2cccf19eb36d27c39d12dab4f4b01556b7449e7b1f44
     restart: unless-stopped
     command: ["redis-server", "--save", "", "--appendonly", "no"]
     ports:
@@ -29,7 +29,7 @@ services:
       retries: 10
 
   s3:
-    image: chrislusf/seaweedfs:3.80
+    image: chrislusf/seaweedfs:3.80@sha256:1055999e08eed1789b0ae45d235126e4495e23d3fb9d6396293fd42539b1ae6a
     restart: unless-stopped
     command: ["server", "-dir=/data", "-filer", "-s3", "-s3.port=8333", "-master.volumeSizeLimitMB=1024"]
     ports:

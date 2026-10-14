@@ -7,22 +7,17 @@ import {
   ApiError,
   ChatMessage,
   Citation,
+  clearSessionId,
   createSession,
   fetchMessages,
+  getSessionId,
   isLoggedIn,
+  newRequestId,
+  setSessionId,
   streamChatMessage,
 } from "../lib/api";
 
 type Draft = { text: string; citations: Citation[] };
-
-function getSessionId(): string | null {
-  if (typeof window === "undefined") return null;
-  return window.localStorage.getItem("office-ai-session");
-}
-
-function setSessionId(id: string) {
-  window.localStorage.setItem("office-ai-session", id);
-}
 
 function mergeCitation(existing: Citation[], citation: Citation): Citation[] {
   if (existing.some((c) => c.ref === citation.ref)) return existing;
@@ -42,6 +37,7 @@ export default function ChatPage() {
   const [statusStage, setStatusStage] = useState("");
   const [error, setError] = useState("");
   const [loggedIn, setLoggedIn] = useState(true);
+  const [hasSession, setHasSession] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const draftRef = useRef("");
 
@@ -55,11 +51,13 @@ export default function ChatPage() {
     }
     const sessionId = getSessionId();
     if (!sessionId) return;
+    setHasSession(true);
     fetchMessages(sessionId)
       .then(setMessages)
       .catch((err: unknown) => {
         if (err instanceof ApiError && err.status === 404) {
-          setSessionId("");
+          clearSessionId();
+          setHasSession(false);
         } else {
           setError(describe(err));
         }
@@ -69,6 +67,14 @@ export default function ChatPage() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, draft]);
+
+  const startNewSession = () => {
+    clearSessionId();
+    setHasSession(false);
+    setMessages([]);
+    setDraft({ text: "", citations: [] });
+    setError("");
+  };
 
   const send = async () => {
     const text = input.trim();
@@ -81,6 +87,7 @@ export default function ChatPage() {
       if (!sessionId) {
         sessionId = await createSession();
         setSessionId(sessionId);
+        setHasSession(true);
       }
     } catch (err) {
       setError(describe(err));
@@ -100,13 +107,8 @@ export default function ChatPage() {
     setDraft({ text: "", citations: [] });
     draftRef.current = "";
 
-    const clientRequestId =
-      typeof crypto !== "undefined" && "randomUUID" in crypto
-        ? crypto.randomUUID()
-        : `req-${Date.now()}`;
-
     try {
-      await streamChatMessage(sessionId, text, clientRequestId, {
+      await streamChatMessage(sessionId, text, newRequestId(), {
         onStatus: (stage) => setStatusStage(stage),
         onDelta: (delta) => setDraft((prev) => ({ ...prev, text: prev.text + delta })),
         onCitation: (citation) =>
@@ -141,12 +143,14 @@ export default function ChatPage() {
 
   return (
     <main className="chat">
-      <nav className="topnav">
-        <strong>Office AI Assistant</strong>
-        <span className="spacer" />
-        <Link href="/admin">Admin Dokumen</Link>
-        <Link href="/login">Ganti User</Link>
-      </nav>
+      <div className="chatbar">
+        <span>{hasSession ? "Sesi aktif" : "Sesi baru"}</span>
+        {hasSession ? (
+          <button type="button" className="ghost" onClick={startNewSession}>
+            + Sesi Baru
+          </button>
+        ) : null}
+      </div>
 
       <div className="messages">
         {messages.length === 0 && !streaming ? (

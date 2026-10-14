@@ -1,4 +1,4 @@
-SHELL := /bin/sh
+﻿SHELL := /bin/sh
 
 COMPOSE_FILE := infra/docker-compose.yml
 DATABASE_URL ?= postgres://migrator:dev_migrator_password@127.0.0.1:15432/office_ai?sslmode=disable
@@ -42,7 +42,7 @@ migrate-version:
 test: test-go test-worker test-web
 
 test-go:
-	cd apps/api && ACL_TEST_DATABASE_URL="$(ACL_TEST_DATABASE_URL)" go test ./...
+	cd apps/api && ACL_TEST_DATABASE_URL="$(ACL_TEST_DATABASE_URL)" go test -p 1 ./...
 
 test-worker:
 	cd apps/worker && WORKER_TEST_DATABASE_URL="$(WORKER_TEST_DATABASE_URL)" python -m unittest discover -s tests -v
@@ -81,3 +81,18 @@ secret-scan:
 	else \
 		sh scripts/secret-scan.sh; \
 	fi
+
+backup-db:
+	@mkdir -p backups
+	docker compose -f $(COMPOSE_FILE) exec -T postgres pg_dump -U $${POSTGRES_USER:-migrator} $${POSTGRES_DB:-office_ai} | gzip > backups/office_ai_$$(date +%Y%m%d_%H%M%S).sql.gz
+	@echo "backup written to backups/"
+
+restore-db:
+	@if [ -z "$(BACKUP_FILE)" ]; then echo "usage: make restore-db BACKUP_FILE=backups/office_ai_YYYYmmdd_HHMMSS.sql.gz [RESTORE_DB=office_ai_restore]"; exit 1; fi
+	docker compose -f $(COMPOSE_FILE) exec -T postgres psql -U $${POSTGRES_USER:-migrator} -d postgres -c "DROP DATABASE IF EXISTS $${RESTORE_DB:-office_ai_restore}" >/dev/null
+	docker compose -f $(COMPOSE_FILE) exec -T postgres psql -U $${POSTGRES_USER:-migrator} -d postgres -c "CREATE DATABASE $${RESTORE_DB:-office_ai_restore}" >/dev/null
+	gunzip -c "$(BACKUP_FILE)" | docker compose -f $(COMPOSE_FILE) exec -T postgres psql -U $${POSTGRES_USER:-migrator} -d $${RESTORE_DB:-office_ai_restore}
+	@echo "restored into $${RESTORE_DB:-office_ai_restore}; verify, then drop it"
+
+loadtest:
+	go -C apps/api run ./cmd/loadtest -url "$${LOADTEST_URL:-http://127.0.0.1:18080}" -n $${N:-200} -c $${C:-10} -email $${LOADTEST_EMAIL:-admin@dev.local}

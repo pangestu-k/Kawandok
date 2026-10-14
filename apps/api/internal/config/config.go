@@ -16,7 +16,7 @@ const (
 	StorageMemory = "memory"
 	StorageS3     = "s3"
 
-	DefaultPort               = "8080"
+	DefaultPort               = "18080"
 	DefaultEmbeddingDim       = 1536
 	DefaultPresignTTLSeconds  = 60
 	DefaultMaxUploadBytes     = 26_214_400

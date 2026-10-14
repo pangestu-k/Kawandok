@@ -11,6 +11,7 @@ from worker.config import WorkerConfig
 from worker.embedder import MockEmbedder, OpenAIEmbedder
 from worker.ingest import Processor
 from worker.queue import Consumer
+from worker.scanner import ClamAVScanner, DisabledScanner
 from worker.storage import build_fetcher
 
 
@@ -35,6 +36,7 @@ def main() -> int:
         chunk_overlap_chars=cfg.chunk_overlap_chars,
         max_attempts=cfg.max_attempts,
         backoff_base_seconds=cfg.backoff_base_seconds,
+        scanner=build_scanner(cfg),
     )
 
     recovered = processor.recover_stale()
@@ -80,6 +82,12 @@ def build_embedder(cfg: WorkerConfig):
     if cfg.embedding_provider == "openai":
         return OpenAIEmbedder(cfg.embedding_base_url, cfg.embedding_api_key, cfg.embedding_model, cfg.embedding_dim)
     return MockEmbedder(cfg.embedding_dim)
+
+
+def build_scanner(cfg: WorkerConfig):
+    if cfg.malware_scan_mode == "clamav":
+        return ClamAVScanner(cfg.clamav_host, cfg.clamav_port, cfg.clamav_timeout_seconds)
+    return DisabledScanner()
 
 
 if __name__ == "__main__":

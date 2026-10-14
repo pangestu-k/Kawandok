@@ -16,7 +16,7 @@ Use for new decisions made during implementation. Record date, decision, options
 - Finance spreadsheet format and mappings.
 
 ## M0 implementation decisions (2026-10-13)
-- Git repo initialized; **CI deferred by product-owner choice**. All tests run offline via `make test`; CI must be introduced no later than M2 so ACL negative tests gate merges.
+- Git repo initialized; **CI deferred by product-owner choice**. All tests run offline via `make test`; CI must be introduced no later than M2 so ACL negative tests gate merges. This was completed in the M5 CI decision below.
 - Job queue contract: **Redis Streams with a versioned JSON envelope** (`apps/worker/worker/envelope.py`). Canonical-UUID job ids, whitelisted job types, and payload size caps are validated on producer and consumer sides; dead-letter handling arrives in M2.
 - Schema migrations live in `infra/db/migrations` and are applied by `apps/api/cmd/migrate` (golang-migrate v4.17.1). Only migrations write DDL; applications consume the schema.
 - **Least-privilege Postgres roles** `api` and `worker` are created by migration 000001 (no superuser/createdb/createrole; DML only via default privileges). Verified: both roles can connect; neither can create tables; refined per-table grants continue in M1/M2.
@@ -76,6 +76,18 @@ Use for new decisions made during implementation. Record date, decision, options
 - **XLSX versions are not chunked/embedded**: they produce structured rows only (the document still reaches `ready` and is searchable by metadata). Worker `openpyxl==3.1.5` pinned.
 - Every finance tool execution writes `finance.summary` / `finance.compare` audit events with allowed/denied results.
 
+## M5 implementation decisions (2026-10-14)
+- **Frontend integration completed as an explicit M5 workstream** (the delivery plan never allocated UI work; recorded here as a plan addition). Next.js pages: login (email → `POST /api/auth/dev/token` → browser-held JWT), chat (session create, SSE streaming, citations, history, new-session), admin console (upload with grants builder, search + status filter + pagination, detail modal using `GET /v1/documents/{id}` and the version-status endpoint, download, reindex). The browser holds only a short-lived user JWT; all server credentials stay in the API. FE↔API traffic goes through the Next.js `/api` rewrite proxy (no CORS surface).
+- **Dev auth upgraded from static tokens to dev-issued JWTs** (HS256, `external_subject` mapping): the browser never receives the signing key; `POST /auth/dev/token` is registered only in dev and the prod startup guard still refuses to boot. OIDC remains the launch blocker (company decision).
+- **Local port family moved to 15432 (Postgres), 16379 (Redis), 18080 (API)** because 5432/6379/8080 are bound by other containers on the primary development machine; FE proxy default target is `http://127.0.0.1:18080`.
+- **Rate limiting**: per-IP token bucket, `API_RATE_LIMIT_RPM` default 120/min (0 disables); in-process — horizontal deployments must move it to a shared store.
+- **Observability**: `/metrics` (Prometheus text) with HTTP route/status counters, latency histogram, and LLM token counters per provider; `API_METRICS_ENABLED` gate. Log redaction unchanged.
+- **CI introduced** (`.github/workflows/ci.yml`): API build/vet/test + worker tests against real Postgres services, web lint/test/build, gitleaks. Previously deferred by decision; added at M5 per the delivery plan's CI requirement.
+- **Images pinned by digest** (pgvector pg16, redis 7.2.5-alpine, seaweedfs 3.80) in compose.
+- **Backup/restore rehearsed**: `make backup-db` / `make restore-db BACKUP_FILE=...` restores into a scratch database that is verified then dropped.
+- **Load test**: `make loadtest` (Go tool `cmd/loadtest`) — 200 req / c=10 against the authenticated read path reported 0 failures, p50 0.54 ms, p95 30 ms, and the rate limiter correctly throttled the remainder.
+- A Docker Desktop backend process on this machine was accidentally stopped during port probing (8080 was held by Docker) and was immediately restarted; all containers recovered healthy. Recorded for transparency.
+
 ## M5 authentication preparation (2026-10-14)
 - Learning/dev uses short-lived, server-issued HS256 JWTs. The signing key stays server-side; the browser requests a token only for an active seeded user via a dev-only endpoint. This is deliberately not a production login mechanism.
 - JWT `sub` maps to `users.external_subject` (seeded as `dev:<email>`). A future OIDC verifier will validate issuer/JWKS/audience and reuse this mapping, preserving existing application roles, departments, and ACLs.
@@ -84,3 +96,14 @@ Use for new decisions made during implementation. Record date, decision, options
 ## M3 embedding provider preparation (2026-10-14)
 - API and worker support `mock` (default) and an OpenAI-compatible `/embeddings` adapter. Both must use the same provider, model, endpoint, API key and vector dimension; a model/dimension change requires a re-index and matching migration dimension.
 - Cloud embeddings are never used in automated tests. Adapter tests use local mocked HTTP responses, and document text is not logged by the adapters.
+
+## M5 CI quality gate (2026-10-14)
+- GitHub Actions runs on pull requests and pushes to `main`. It creates an ephemeral `pgvector/pgvector:pg16` database, applies the canonical migrations, then runs Go API tests (including DB-backed ACL/retrieval tests), worker tests plus Ruff/Mypy, and web test/lint/build.
+- A separate secret-scan job runs the repository's tracked-file scanner. It is deliberately dependency-free so the gate remains available without a third-party scanning service; adopting a managed scanner and pinning action commits are follow-up hardening work.
+
+## API contract synchronization (2026-10-14)
+- OpenAPI paths use the exact public route prefix (`/v1`) and include the authenticated department-list endpoint. A dependency-free Go test checks that all non-conditional public routes remain documented; it intentionally does not document `/metrics`, because that route only exists when metrics are enabled.
+
+## M5 malware scanning preparation (2026-10-14)
+- The worker can scan fetched objects with a ClamAV-compatible daemon using its `INSTREAM` protocol, before PDF/DOCX/XLSX parsing and without writing the object to disk. A detection is terminal (`MALWARE_DETECTED`); a scanner outage retries through the existing job backoff and eventually fails.
+- Scanning remains disabled in local learning mode. Production worker startup requires `clamav`; the daemon must be independently operated before real documents are accepted. Parser process isolation/resource sandboxing remains a deployment decision and is not claimed as implemented.

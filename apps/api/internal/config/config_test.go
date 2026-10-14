@@ -38,7 +38,7 @@ func TestLoad(t *testing.T) {
 			env:  map[string]string{"API_JWT_SIGNING_KEY": "01234567890123456789012345678901"},
 			want: Config{
 				Env:                "dev",
-				Port:               "8080",
+				Port:               "18080",
 				LLMProvider:        "mock",
 				EmbeddingProvider:  "mock",
 				EmbeddingDim:       1536,

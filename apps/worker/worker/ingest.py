@@ -11,6 +11,7 @@ from worker.envelope import validate_envelope
 from worker.finance import MIME_XLSX
 from worker.parser import PermanentError, parse_document
 from worker.parser import MIME_PDF, MIME_DOCX
+from worker.scanner import DisabledScanner, MalwareDetected, Scanner, ScannerUnavailable
 from worker.storage import ObjectNotFound, StorageError, StorageFetcher
 
 log = logging.getLogger("worker.ingest")
@@ -46,6 +47,7 @@ class Processor:
         chunk_overlap_chars: int = 150,
         max_attempts: int = 3,
         backoff_base_seconds: float = 5.0,
+        scanner: Scanner | None = None,
     ) -> None:
         self._dsn = dsn
         self._fetcher = fetcher
@@ -55,6 +57,7 @@ class Processor:
         self._chunk_overlap_chars = chunk_overlap_chars
         self._max_attempts = max_attempts
         self._backoff_base_seconds = backoff_base_seconds
+        self._scanner = scanner or DisabledScanner()
 
     def handle_message(self, raw: bytes) -> str:
         try:
@@ -164,6 +167,13 @@ class Processor:
             raise PermanentError("OBJECT_MISSING", f"stored object not found: {exc}") from exc
         except StorageError as exc:
             raise RuntimeError(f"storage unavailable: {exc}") from exc
+
+        try:
+            self._scanner.scan(data)
+        except MalwareDetected as exc:
+            raise PermanentError("MALWARE_DETECTED", "document failed malware scan") from exc
+        except ScannerUnavailable as exc:
+            raise RuntimeError("malware scanner unavailable") from exc
 
         if mime_type == MIME_XLSX:
             self._run_finance(job, data)

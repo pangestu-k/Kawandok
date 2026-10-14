@@ -7,6 +7,7 @@ import socket
 ALLOWED_ENVS = frozenset({"dev", "prod"})
 ALLOWED_STORAGE_BACKENDS = frozenset({"memory", "s3"})
 ALLOWED_EMBEDDING_PROVIDERS = frozenset({"mock", "openai"})
+ALLOWED_MALWARE_SCAN_MODES = frozenset({"disabled", "clamav"})
 MAX_ALLOWED_PAYLOAD_BYTES = 16 * 1024 * 1024
 DEFAULT_MAX_PAYLOAD_BYTES = 1_048_576
 
@@ -39,6 +40,10 @@ class WorkerConfig:
     storage_bucket: str
     storage_access_key: str
     storage_secret_key: str
+    malware_scan_mode: str
+    clamav_host: str
+    clamav_port: int
+    clamav_timeout_seconds: float
 
     @classmethod
     def from_env(cls, getenv=os.getenv) -> "WorkerConfig":
@@ -65,6 +70,10 @@ class WorkerConfig:
             storage_bucket=getenv("WORKER_STORAGE_BUCKET", ""),
             storage_access_key=getenv("WORKER_STORAGE_ACCESS_KEY", ""),
             storage_secret_key=getenv("WORKER_STORAGE_SECRET_KEY", ""),
+            malware_scan_mode=getenv("WORKER_MALWARE_SCAN_MODE", "disabled").strip().lower(),
+            clamav_host=getenv("WORKER_CLAMAV_HOST", "127.0.0.1").strip(),
+            clamav_port=_int_env(getenv, "WORKER_CLAMAV_PORT", 3310),
+            clamav_timeout_seconds=_float_env(getenv, "WORKER_CLAMAV_TIMEOUT_SECONDS", 30.0),
         )
         cfg.validate()
         return cfg
@@ -131,6 +140,18 @@ class WorkerConfig:
             ):
                 if not getattr(self, _config_field(name)):
                     raise ConfigError(f"{name} is required when the storage backend is 's3'")
+        if self.malware_scan_mode not in ALLOWED_MALWARE_SCAN_MODES:
+            raise ConfigError(
+                f"WORKER_MALWARE_SCAN_MODE must be one of {sorted(ALLOWED_MALWARE_SCAN_MODES)}"
+            )
+        if self.env == "prod" and self.malware_scan_mode != "clamav":
+            raise ConfigError("WORKER_MALWARE_SCAN_MODE must be 'clamav' in prod")
+        if self.malware_scan_mode == "clamav" and not self.clamav_host:
+            raise ConfigError("WORKER_CLAMAV_HOST is required when malware scanning uses ClamAV")
+        if not 1 <= self.clamav_port <= 65535:
+            raise ConfigError("WORKER_CLAMAV_PORT must be between 1 and 65535")
+        if not 0 < self.clamav_timeout_seconds <= 300:
+            raise ConfigError("WORKER_CLAMAV_TIMEOUT_SECONDS must be between 0 and 300")
 
 
 def _config_field(env_name: str) -> str:

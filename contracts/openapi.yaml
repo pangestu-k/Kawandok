@@ -1,4 +1,4 @@
-openapi: 3.0.3
+﻿openapi: 3.0.3
 info:
   title: Office AI Assistant API
   version: 0.2.0
@@ -9,7 +9,7 @@ info:
     responses to prevent enumeration. Chat and finance endpoints follow in
     M3/M4 per docs/07-DELIVERY-PLAN.md.
 servers:
-  - url: http://127.0.0.1:8080
+  - url: http://127.0.0.1:18080
     description: local development
 security:
   - bearerAuth: []
@@ -65,7 +65,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ReadinessResponse"
-  /documents:
+  /v1/documents:
     get:
       summary: List and search documents authorized for the caller
       operationId: listDocuments
@@ -103,7 +103,7 @@ paths:
               $ref: "#/components/schemas/UploadRequest"
       responses:
         "201":
-          description: Document stored; ingestion status is `uploaded` until M2
+          description: Document stored and ingestion is queued.
           content:
             application/json:
               schema:
@@ -130,7 +130,7 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
-  /documents/{id}:
+  /v1/documents/{id}:
     get:
       summary: Document metadata and current version
       operationId: getDocument
@@ -147,7 +147,7 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFoundUniform"
-  /documents/{id}/download:
+  /v1/documents/{id}/download:
     get:
       summary: Download the original file if authorized
       operationId: downloadDocument
@@ -169,7 +169,7 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFoundUniform"
-  /documents/{id}/versions/{versionId}/status:
+  /v1/documents/{id}/versions/{versionId}/status:
     get:
       summary: Ingestion status of a specific version
       operationId: getDocumentVersionStatus
@@ -194,7 +194,7 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFoundUniform"
-  /documents/{id}/reindex:
+  /v1/documents/{id}/reindex:
     post:
       summary: Re-run ingestion for the current version (admin only)
       operationId: reindexDocument
@@ -218,7 +218,26 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFoundUniform"
-  /chat/sessions:
+  /v1/departments:
+    get:
+      summary: List departments available for document metadata
+      operationId: listDepartments
+      responses:
+        "200":
+          description: Departments ordered by name
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [departments]
+                properties:
+                  departments:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Department"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /v1/chat/sessions:
     post:
       summary: Create a chat session owned by the caller
       operationId: createChatSession
@@ -241,7 +260,7 @@ paths:
                   session_id: { type: string, format: uuid }
         "401":
           $ref: "#/components/responses/Unauthorized"
-  /chat/sessions/{id}/messages:
+  /v1/chat/sessions/{id}/messages:
     post:
       summary: Send a message; response is a Server-Sent Events stream
       operationId: postChatMessage
@@ -443,3 +462,9 @@ components:
         total: { type: integer }
         page: { type: integer }
         page_size: { type: integer }
+    Department:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }

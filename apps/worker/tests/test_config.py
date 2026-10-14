@@ -32,6 +32,7 @@ class WorkerConfigTests(unittest.TestCase):
         self.assertEqual(cfg.poll_interval_seconds, 5.0)
         self.assertEqual(cfg.max_attempts, 3)
         self.assertEqual(cfg.storage_backend, "memory")
+        self.assertEqual(cfg.malware_scan_mode, "disabled")
 
     def test_explicit_values_are_kept(self) -> None:
         env = base_env()
@@ -45,6 +46,7 @@ class WorkerConfigTests(unittest.TestCase):
                 "WORKER_STORAGE_BUCKET": "docs",
                 "WORKER_STORAGE_ACCESS_KEY": "key",
                 "WORKER_STORAGE_SECRET_KEY": "secret",
+                "WORKER_MALWARE_SCAN_MODE": "clamav",
             }
         )
         cfg = WorkerConfig.from_env(env_getter(env))
@@ -108,6 +110,22 @@ class WorkerConfigTests(unittest.TestCase):
             }
         )
         self.assertEqual(WorkerConfig.from_env(env_getter(env)).embedding_provider, "openai")
+
+    def test_clamav_configuration_is_validated(self) -> None:
+        env = base_env()
+        env["WORKER_MALWARE_SCAN_MODE"] = "clamav"
+        cfg = WorkerConfig.from_env(env_getter(env))
+        self.assertEqual(cfg.clamav_port, 3310)
+
+        env["WORKER_CLAMAV_PORT"] = "70000"
+        with self.assertRaises(ConfigError):
+            WorkerConfig.from_env(env_getter(env))
+
+    def test_production_requires_clamav(self) -> None:
+        env = base_env()
+        env["WORKER_ENV"] = "prod"
+        with self.assertRaises(ConfigError):
+            WorkerConfig.from_env(env_getter(env))
 
 
 if __name__ == "__main__":

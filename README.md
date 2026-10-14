@@ -1,6 +1,6 @@
 ﻿# Office AI Assistant â€” AI Agent Build Pack
 
-Status: **M4 implemented** (structured finance: XLSX template import with row provenance, predefined read-only aggregate tools via chat with deny-by-default department scoping and audit, exact fixture totals; plus M3 RAG chat, M2 ingestion worker, M1 ACL-protected documents, M0 scaffold). Production hardening (M5) remains. This repository documentation remains the source of truth, not evidence that later features exist.
+Status: **M5 implemented — all milestones delivered** (frontend with full API integration: login/chat/admin; dev-JWT auth; rate limiting; metrics; CI; digest-pinned images; rehearsed backup/restore; load test; deployment + security review docs). NOT production-ready by policy: company decisions (OIDC, R2/DPA, retention, LLM agreement) remain open — see docs/SECURITY-REVIEW.md. This repository documentation remains the source of truth, not evidence that later features exist.
 
 ## Product in one sentence
 A permission-aware internal company assistant, accessed by chat, that can locate and return original office files, answer questions grounded in their contents, and compute reliable financial results from structured data.
@@ -21,7 +21,7 @@ Prerequisites: Go 1.22+, Node.js 20+, Python 3.10+, Docker.
 ```sh
 make up            # Postgres(pgvector):15432, Redis:16379, S3-compatible (SeaweedFS):19000
 make migrate       # apply infra/db/migrations ({{EMBEDDING_DIM}} defaults to API_EMBEDDING_DIM=1536)
-go run ./apps/api/cmd/api   # API on :8080
+go run ./apps/api/cmd/api   # API on :18080 (proxy FE /api -> :18080)
 cd apps/worker && python -m worker.main   # ingestion worker (needs pip install of pinned deps)
 cd apps/web && npm install && npm run dev
 ```
@@ -40,8 +40,10 @@ Configuration template: `infra/.env.example` â€” copy to `.env` and fill in
 Development auth fixture: request a short-lived JWT for a seeded user, then pass it as a bearer token:
 
 ```sh
-TOKEN=$(curl -s -X POST http://127.0.0.1:8080/auth/dev/token -H 'Content-Type: application/json' -d '{"email":"admin@dev.local"}' | jq -r .access_token)
-curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8080/v1/documents
+TOKEN=$(curl -s -X POST http://127.0.0.1:18080/auth/dev/token \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@dev.local"}' | python -c "import sys,json;print(json.load(sys.stdin)['access_token'])")
+curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:18080/v1/documents
 ```
 
 Seeded dev users: `admin@dev.local` (admin), `budi@dev.local` (employee, General), `siti@dev.local` (finance, Finance), `rian@dev.local` (employee, Finance). Upload requires the admin role and grants are deny-by-default. The dev issuer is disabled by the production startup guard; OIDC is still required before launch.
