@@ -194,6 +194,31 @@ export async function listDepartments(): Promise<Department[]> {
   return body.departments ?? [];
 }
 
+export type SessionSummary = {
+  session_id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  messages: number;
+};
+
+export async function listSessions(): Promise<SessionSummary[]> {
+  const body = await jsonFetch<{ sessions: SessionSummary[] }>("/v1/chat/sessions");
+  return body.sessions ?? [];
+}
+
+export async function renameSession(sessionId: string, title: string): Promise<void> {
+  await apiFetch(`/v1/chat/sessions/${sessionId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title }),
+  });
+}
+
+export async function deleteSession(sessionId: string): Promise<void> {
+  await apiFetch(`/v1/chat/sessions/${sessionId}`, { method: "DELETE" });
+}
+
 export async function createSession(title?: string): Promise<string> {
   const body = await jsonFetch<{ session_id: string }>("/v1/chat/sessions", {
     method: "POST",

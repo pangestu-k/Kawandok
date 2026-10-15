@@ -88,6 +88,14 @@ Use for new decisions made during implementation. Record date, decision, options
 - **Load test**: `make loadtest` (Go tool `cmd/loadtest`) — 200 req / c=10 against the authenticated read path reported 0 failures, p50 0.54 ms, p95 30 ms, and the rate limiter correctly throttled the remainder.
 - A Docker Desktop backend process on this machine was accidentally stopped during port probing (8080 was held by Docker) and was immediately restarted; all containers recovered healthy. Recorded for transparency.
 
+## Chat session management (2026-10-15)
+- **Session CRUD ala ChatGPT** ditambahkan: `GET /v1/chat/sessions` (milik pemanggil, urut aktivitas terbaru, dengan jumlah pesan), `PATCH /v1/chat/sessions/{id}` (ganti judul), `DELETE /v1/chat/sessions/{id}` (menghapus sesi + seluruh pesan via cascade). Semua endpoint memakai pola kepemilikan yang sama: milik orang lain = 404 seragam (anti-enumerasi).
+- **Judul otomatis**: pesan pertama di sesi tanpa judul mengisi title (dipotong 48 karakter) lewat `EnsureTitle` — user tetap bisa mengganti manual.
+- `chat_sessions` ditambah kolom `updated_at` (migration 000007) untuk pengurutan berdasarkan aktivitas terbaru; setiap pesan baru memperbarui `updated_at`.
+- Nomor migrasi 000006 sempat bentrok dengan `000006_external_subject` yang muncul dari jalur pengembangan lain; migrasi sesi digeser ke 000007.
+- FE: sidebar sesi (kiri, gaya ChatGPT) dengan buat/ganti judul/hapus memakai TanStack Query mutations + invalidation; event window `office-ai:sessions-changed` menyinkronkan daftar setelah pesan terkirim.
+- Endpoint REST keuangan (`GET /v1/finance/summary|compare`) dan identity (`/v1/me|users|roles|departments`) ditambahkan agar halaman Financial/Departemen/Users & Roles berbasis data nyata; halaman Approvals/Tasks/Settings dihapus karena backend-nya tidak ada.
+
 ## Frontend module adjustment (2026-10-15)
 - **Placeholder pages removed** (Approvals, Tasks, Settings): their backend does not exist, and per project rules the UI must not present unimplemented features. They are also removed from the navigation.
 - **New backend-backed pages**: Departments (`GET /v1/departments` now includes `user_count`), Users & Roles (admin-only, audited `GET /v1/users` + `GET /v1/roles`; non-admin receives 403 and the denial is audited), and Financial (REST read-only `GET /v1/finance/summary` + `GET /v1/finance/compare` with the same server-side department scoping, FINANCE_FORBIDDEN/CONFLICTING_CURRENCIES semantics, and audit as the chat tools).

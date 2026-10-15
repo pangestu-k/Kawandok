@@ -209,11 +209,88 @@ p {
   background: #fff;
 }
 
+.chat-layout.with-sessions {
+  grid-template-columns: 250px minmax(0, 1fr) 312px;
+}
+
 .chat-center {
   min-width: 0;
   display: flex;
   flex-direction: column;
   border-right: 1px solid var(--line);
+}
+
+.session-rail {
+  border-right: 1px solid var(--line);
+  background: #fbfcfd;
+  padding: 14px 10px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.session-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.session-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.session-item:hover {
+  background: var(--soft);
+}
+
+.session-item.active {
+  background: #e7f2fc;
+}
+
+.session-copy {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+}
+
+.session-actions {
+  display: none;
+  gap: 0;
+  flex-shrink: 0;
+}
+
+.session-item:hover .session-actions {
+  display: inline-flex;
+}
+
+@media (max-width: 1250px) {
+  .chat-layout.with-sessions {
+    grid-template-columns: 210px minmax(0, 1fr) 270px;
+  }
+}
+
+@media (max-width: 970px) {
+  .chat-layout.with-sessions {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .session-rail {
+    display: none;
+  }
+  .chat-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .chat-rail {
+    display: none;
+  }
 }
 
 .chat-head {

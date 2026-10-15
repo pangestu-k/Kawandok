@@ -1,0 +1,1 @@
+ALTER TABLE chat_sessions ADD COLUMN updated_at TIMESTAMPTZ NOT NULL DEFAULT now();

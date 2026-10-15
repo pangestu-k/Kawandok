@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  App,
   Avatar,
   Button,
   Tag,
@@ -8,7 +9,7 @@ import {
   Typography,
 } from "antd";
 import { PaperClipOutlined, SendOutlined, UserOutlined } from "@ant-design/icons";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   ApiError,
@@ -23,19 +24,24 @@ import {
   setSessionId,
   streamChatMessage,
 } from "../lib/api";
+import { SessionSidebar } from "./SessionSidebar";
 
 const { Text } = Typography;
 
 type Draft = { text: string; citations: Citation[] };
 
-const PROMPTS = [
-  "Ringkas dokumen kebijakan yang tersedia",
-  "Berapa total pendapatan departemen Finance bulan ini?",
-  "Apa isi SOP pengajuan cuti?",
-  "Bandingkan pendapatan dua bulan terakhir",
-];
+function mergeCitation(existing: Citation[], citation: Citation): Citation[] {
+  if (existing.some((c) => c.ref === citation.ref)) return existing;
+  return [...existing, citation];
+}
+
+function describe(err: unknown): string {
+  if (err instanceof ApiError) return `${err.code}: ${err.message}`;
+  return String(err);
+}
 
 export function ChatPanel() {
+  const { message: toast } = App.useApp();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState<Draft>({ text: "", citations: [] });
   const [input, setInput] = useState("");
@@ -43,12 +49,26 @@ export function ChatPanel() {
   const [statusStage, setStatusStage] = useState("");
   const [error, setError] = useState("");
   const [ready, setReady] = useState(false);
-  const [hasSession, setHasSession] = useState(false);
+  const [activeSession, setActiveSession] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const draftRef = useRef("");
-  const composerRef = useRef<HTMLTextAreaElement>(null);
 
   draftRef.current = draft.text;
+
+  const loadHistory = useCallback(async (sessionId: string) => {
+    try {
+      const history = await fetchMessages(sessionId);
+      setMessages(history);
+    } catch (err: unknown) {
+      if (err instanceof ApiError && err.status === 404) {
+        clearSessionId();
+        setActiveSession(null);
+        setMessages([]);
+      } else {
+        setError(describe(err));
+      }
+    }
+  }, []);
 
   useEffect(() => {
     if (!isLoggedIn()) {
@@ -56,38 +76,32 @@ export function ChatPanel() {
       return;
     }
     const sessionId = getSessionId();
-    if (!sessionId) {
-      setReady(true);
-      return;
+    if (sessionId) {
+      setActiveSession(sessionId);
+      void loadHistory(sessionId);
     }
-    setHasSession(true);
-    fetchMessages(sessionId)
-      .then((history) => {
-        setMessages(history);
-        setReady(true);
-      })
-      .catch((err: unknown) => {
-        if (err instanceof ApiError && err.status === 404) {
-          clearSessionId();
-          setHasSession(false);
-        } else {
-          setError(describe(err));
-        }
-        setReady(true);
-      });
-  }, []);
+    setReady(true);
+  }, [loadHistory]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, draft]);
 
-  const startNewSession = () => {
-    clearSessionId();
-    setHasSession(false);
+  const selectSession = (sessionId: string) => {
+    setSessionId(sessionId);
+    setActiveSession(sessionId);
     setMessages([]);
     setDraft({ text: "", citations: [] });
     setError("");
-    composerRef.current?.focus();
+    void loadHistory(sessionId);
+  };
+
+  const startNewSession = () => {
+    clearSessionId();
+    setActiveSession(null);
+    setMessages([]);
+    setDraft({ text: "", citations: [] });
+    setError("");
   };
 
   const send = async (raw?: string) => {
@@ -96,12 +110,12 @@ export function ChatPanel() {
     setError("");
     setInput("");
 
-    let sessionId = getSessionId();
+    let sessionId = activeSession ?? getSessionId();
     try {
       if (!sessionId) {
         sessionId = await createSession();
         setSessionId(sessionId);
-        setHasSession(true);
+        setActiveSession(sessionId);
       }
     } catch (err) {
       setError(describe(err));
@@ -124,9 +138,7 @@ export function ChatPanel() {
         onCitation: (citation) =>
           setDraft((prev) => ({
             ...prev,
-            citations: prev.citations.some((c) => c.ref === citation.ref)
-              ? prev.citations
-              : [...prev.citations, citation],
+            citations: mergeCitation(prev.citations, citation),
           })),
         onError: (code, msg) => setError(`${code}: ${msg}`),
         onDone: (citations) => {
@@ -144,6 +156,7 @@ export function ChatPanel() {
           setStatusStage("");
         },
       });
+      window.dispatchEvent(new Event("office-ai:sessions-changed"));
     } catch (err) {
       setError(describe(err));
     } finally {
@@ -152,8 +165,25 @@ export function ChatPanel() {
     }
   };
 
+  if (!ready) {
+    return (
+      <div className="chat-layout">
+        <section className="chat-center">
+          <div className="chat-scroll">
+            <Text type="secondary">Memuat…</Text>
+          </div>
+        </section>
+      </div>
+    );
+  }
+
   return (
-    <div className="chat-layout">
+    <div className="chat-layout with-sessions">
+      <SessionSidebar
+        activeSessionId={activeSession}
+        onSelected={(id) => selectSession(id)}
+      />
+
       <section className="chat-center">
         <div className="chat-head">
           <div className="row">
@@ -162,14 +192,14 @@ export function ChatPanel() {
             </Avatar>
             <div>
               <Typography.Title level={4} style={{ margin: 0 }}>
-                {hasSession ? "Percakapan aktif" : "Chat Baru"}
+                {activeSession ? "Percakapan aktif" : "Chat Baru"}
               </Typography.Title>
               <Text type="secondary" style={{ fontSize: 12 }}>
                 Diskusi dengan AI Assistant · jawaban dilengkapi sitasi dokumen
               </Text>
             </div>
           </div>
-          {hasSession ? (
+          {activeSession ? (
             <Button onClick={startNewSession} type="primary" ghost>
               Percakapan baru
             </Button>
@@ -177,9 +207,7 @@ export function ChatPanel() {
         </div>
 
         <div className="chat-scroll" ref={scrollRef}>
-          {!ready ? (
-            <Text type="secondary">Memuat…</Text>
-          ) : messages.length === 0 && !streaming ? (
+          {messages.length === 0 && !streaming ? (
             <div className="empty-chat">
               <div className="ai-avatar" style={{ margin: "0 auto 14px", width: 52, height: 52 }}>
                 ✦
@@ -190,7 +218,12 @@ export function ChatPanel() {
                 keuangan dengan tanggal (contoh: 2026-01-01 2026-02-28).
               </p>
               <div className="prompt-grid">
-                {PROMPTS.map((p) => (
+                {[
+                  "Ringkas dokumen kebijakan yang tersedia",
+                  "Berapa total pendapatan departemen Finance bulan ini?",
+                  "Apa isi SOP pengajuan cuti?",
+                  "Bandingkan pendapatan dua bulan terakhir",
+                ].map((p) => (
                   <button
                     key={p}
                     type="button"
@@ -202,59 +235,57 @@ export function ChatPanel() {
                 ))}
               </div>
             </div>
-          ) : (
-            <>
-              {messages.map((m) => (
-                <article key={m.id} className={`message ${m.role === "user" ? "user" : ""}`}>
-                  {m.role === "user" ? (
-                    <Avatar icon={<UserOutlined />} style={{ background: "#125872" }} />
-                  ) : (
-                    <div className="ai-avatar">✦</div>
-                  )}
-                  <div className="message-content">
-                    <div className="message-head">
-                      {m.role === "user" ? "Anda" : "AI Assistant"}{" "}
-                      <time>{formatTime(m.created_at)}</time>
-                    </div>
-                    <div className="bubble">{m.body}</div>
-                    {m.citations && m.citations.length > 0 ? (
-                      <div className="citations">
-                        {m.citations.map((c) => (
-                          <Tooltip key={c.ref} title={c.snippet}>
-                            <Tag color="blue">
-                              [{c.ref}] {c.title}
-                              {c.page_start ? ` · hlm. ${c.page_start}` : ""}
-                              {c.section_ref ? ` · ${c.section_ref}` : ""}
-                            </Tag>
-                          </Tooltip>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
-                </article>
-              ))}
-              {streaming ? (
-                <article className="message">
-                  <div className="ai-avatar">✦</div>
-                  <div className="message-content">
-                    <div className="message-head">
-                      AI Assistant {statusStage ? <time>· {statusStage}…</time> : null}
-                    </div>
-                    <div className="bubble">
-                      {draft.text || <Text type="secondary">menyusun jawaban…</Text>}
-                    </div>
-                    {draft.citations.map((c) => (
-                      <div className="citations" key={c.ref}>
+          ) : null}
+          {messages.map((m) => (
+            <article key={m.id} className={`message ${m.role === "user" ? "user" : ""}`}>
+              {m.role === "user" ? (
+                <Avatar icon={<UserOutlined />} style={{ background: "#125872" }} />
+              ) : (
+                <div className="ai-avatar">✦</div>
+              )}
+              <div className="message-content">
+                <div className="message-head">
+                  {m.role === "user" ? "Anda" : "AI Assistant"}{" "}
+                  <time>{formatTime(m.created_at)}</time>
+                </div>
+                <div className="bubble">{m.body}</div>
+                {m.citations && m.citations.length > 0 ? (
+                  <div className="citations">
+                    {m.citations.map((c) => (
+                      <Tooltip key={c.ref} title={c.snippet}>
                         <Tag color="blue">
                           [{c.ref}] {c.title}
+                          {c.page_start ? ` · hlm. ${c.page_start}` : ""}
+                          {c.section_ref ? ` · ${c.section_ref}` : ""}
                         </Tag>
-                      </div>
+                      </Tooltip>
                     ))}
                   </div>
-                </article>
-              ) : null}
-            </>
-          )}
+                ) : null}
+              </div>
+            </article>
+          ))}
+          {streaming ? (
+            <article className="message">
+              <div className="ai-avatar">✦</div>
+              <div className="message-content">
+                <div className="message-head">
+                  AI Assistant {statusStage ? <time>· {statusStage}…</time> : null}
+                </div>
+                <div className="bubble">
+                  {draft.text || <Text type="secondary">menyusun jawaban…</Text>}
+                </div>
+                {draft.citations.map((c) => (
+                  <div className="citations" key={c.ref}>
+                    <Tag color="blue">
+                      [{c.ref}] {c.title}
+                    </Tag>
+                  </div>
+                ))}
+              </div>
+            </article>
+          ) : null}
+          <div ref={scrollRef} />
         </div>
 
         {error ? <p className="error pad">{error}</p> : null}
@@ -271,7 +302,6 @@ export function ChatPanel() {
               <Button type="text" icon={<PaperClipOutlined />} disabled />
             </Tooltip>
             <textarea
-              ref={composerRef}
               rows={1}
               value={input}
               disabled={streaming}
@@ -331,9 +361,4 @@ function formatTime(value: string): string {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
   return parsed.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
-}
-
-function describe(err: unknown): string {
-  if (err instanceof ApiError) return `${err.code}: ${err.message}`;
-  return String(err);
 }

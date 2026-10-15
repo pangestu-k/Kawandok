@@ -49,6 +49,46 @@ func (f *fakeStore) SessionOwner(_ context.Context, sessionID string) (string, b
 	return owner, ok, nil
 }
 
+func (f *fakeStore) ListSessions(_ context.Context, ownerID string) ([]SessionSummary, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := []SessionSummary{}
+	for id, owner := range f.sessions {
+		if owner != ownerID {
+			continue
+		}
+		out = append(out, SessionSummary{
+			ID:       id,
+			Messages: int64(len(f.messages[id])),
+		})
+	}
+	return out, nil
+}
+
+func (f *fakeStore) RenameSession(_ context.Context, ownerID, sessionID, title string) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.sessions[sessionID] != ownerID {
+		return false, nil
+	}
+	return true, nil
+}
+
+func (f *fakeStore) DeleteSession(_ context.Context, ownerID, sessionID string) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.sessions[sessionID] != ownerID {
+		return false, nil
+	}
+	delete(f.sessions, sessionID)
+	delete(f.messages, sessionID)
+	return true, nil
+}
+
+func (f *fakeStore) EnsureTitle(_ context.Context, sessionID, fallback string) error {
+	return nil
+}
+
 func (f *fakeStore) AppendMessage(_ context.Context, sessionID, role, body string, citations []Citation, clientRequestID string) (string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()

@@ -340,6 +340,70 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFoundUniform"
+  /chat/sessions:
+    get:
+      summary: Daftar sesi chat milik pemanggil (terbaru dulu)
+      operationId: listChatSessions
+      responses:
+        "200":
+          description: Ringkasan sesi: judul (diisi otomatis dari pesan pertama), jumlah pesan, waktu
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        session_id: { type: string, format: uuid }
+                        title: { type: string }
+                        created_at: { type: string, format: date-time }
+                        updated_at: { type: string, format: date-time }
+                        messages: { type: integer }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /chat/sessions/{id}:
+    patch:
+      summary: Ganti judul sesi (pemilik saja)
+      operationId: renameChatSession
+      parameters:
+        - in: path
+          required: true
+          name: id
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title: { type: string, maxLength: 200 }
+      responses:
+        "200":
+          description: Judul diperbarui
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFoundUniform"
+    delete:
+      summary: Hapus sesi beserta seluruh pesannya (pemilik saja)
+      operationId: deleteChatSession
+      parameters:
+        - in: path
+          required: true
+          name: id
+          schema: { type: string, format: uuid }
+      responses:
+        "204":
+          description: Sesi dihapus
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFoundUniform"
   /me:
     get:
       summary: Profil pengguna yang sedang masuk

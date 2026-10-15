@@ -58,6 +58,52 @@ func (s *Service) CreateSession(ctx context.Context, p auth.Principal, title str
 	return id, nil
 }
 
+func (s *Service) ListSessions(ctx context.Context, p auth.Principal) ([]SessionSummary, error) {
+	sessions, err := s.store.ListSessions(ctx, p.ID)
+	if err != nil {
+		s.log.Error("session list failed", "error", err)
+		return nil, httpx.NewAPIError(500, "INTERNAL", "could not list chat sessions")
+	}
+	return sessions, nil
+}
+
+func (s *Service) RenameSession(ctx context.Context, p auth.Principal, sessionID, title string) error {
+	if err := s.requireOwner(ctx, p, sessionID); err != nil {
+		return err
+	}
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return httpx.ErrBadRequest("title is required")
+	}
+	if len(title) > 200 {
+		return httpx.ErrBadRequest("title must be at most 200 characters")
+	}
+	updated, err := s.store.RenameSession(ctx, p.ID, sessionID, title)
+	if err != nil {
+		s.log.Error("session rename failed", "error", err)
+		return httpx.NewAPIError(500, "INTERNAL", "could not rename chat session")
+	}
+	if !updated {
+		return httpx.ErrNotFound()
+	}
+	return nil
+}
+
+func (s *Service) DeleteSession(ctx context.Context, p auth.Principal, sessionID string) error {
+	if err := s.requireOwner(ctx, p, sessionID); err != nil {
+		return err
+	}
+	deleted, err := s.store.DeleteSession(ctx, p.ID, sessionID)
+	if err != nil {
+		s.log.Error("session delete failed", "error", err)
+		return httpx.NewAPIError(500, "INTERNAL", "could not delete chat session")
+	}
+	if !deleted {
+		return httpx.ErrNotFound()
+	}
+	return nil
+}
+
 func (s *Service) requireOwner(ctx context.Context, p auth.Principal, sessionID string) error {
 	owner, ok, err := s.store.SessionOwner(ctx, sessionID)
 	if err != nil {
@@ -147,6 +193,9 @@ func (s *Service) HandleMessage(ctx context.Context, p auth.Principal, sessionID
 		s.log.Error("user message persist failed", "error", err)
 		return httpx.NewAPIError(500, "INTERNAL", "could not store message")
 	}
+	if err := s.store.EnsureTitle(ctx, sessionID, truncateTitle(text)); err != nil {
+		s.log.Warn("session title update failed", "error", err)
+	}
 
 	if intent := detectFinanceIntent(text); intent != nil && s.finance != nil {
 		return s.handleFinanceIntent(ctx, p, sessionID, intent, clientRequestID, emit)
@@ -220,6 +269,14 @@ func emitAPIError(emit Emitter, err error) error {
 
 func requestIDFromContext(ctx context.Context) string {
 	return httpx.RequestIDFromContext(ctx)
+}
+
+func truncateTitle(text string) string {
+	text = strings.Join(strings.Fields(text), " ")
+	if len(text) > 48 {
+		return text[:48]
+	}
+	return text
 }
 
 var citationPattern = regexp.MustCompile(`\[(\d{1,2})\]`)

@@ -40,8 +40,8 @@ describe("web smoke (antd + tanstack query)", () => {
 
   it("renders the chat page shell", () => {
     const html = renderPage(createElement(ChatPage));
-    expect(html).toContain("Chat Baru");
-    expect(html).toContain("chat-compose");
+    expect(html).toContain("chat-layout");
+    expect(html).toContain("Memuat");
   });
 
   it("renders the documents page", () => {

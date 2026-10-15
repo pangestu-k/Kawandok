@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"office-ai-agent/apps/api/internal/auth"
 	"office-ai-agent/apps/api/internal/httpx"
@@ -16,8 +17,58 @@ type Handlers struct {
 
 func Register(mux *http.ServeMux, h *Handlers) {
 	mux.HandleFunc("POST /v1/chat/sessions", h.createSession)
+	mux.HandleFunc("GET /v1/chat/sessions", h.listSessions)
+	mux.HandleFunc("PATCH /v1/chat/sessions/{id}", h.renameSession)
+	mux.HandleFunc("DELETE /v1/chat/sessions/{id}", h.deleteSession)
 	mux.HandleFunc("POST /v1/chat/sessions/{id}/messages", h.postMessage)
 	mux.HandleFunc("GET /v1/chat/sessions/{id}/messages", h.history)
+}
+
+func (h *Handlers) listSessions(w http.ResponseWriter, r *http.Request) {
+	p, ok := h.principal(r)
+	if !ok {
+		httpx.WriteError(w, r, httpx.ErrUnauthorized())
+		return
+	}
+	sessions, err := h.Svc.ListSessions(r.Context(), p)
+	if err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]any{"sessions": sessions})
+}
+
+func (h *Handlers) renameSession(w http.ResponseWriter, r *http.Request) {
+	p, ok := h.principal(r)
+	if !ok {
+		httpx.WriteError(w, r, httpx.ErrUnauthorized())
+		return
+	}
+	var body struct {
+		Title string `json:"title"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		httpx.WriteError(w, r, httpx.ErrBadRequest("invalid JSON body"))
+		return
+	}
+	if err := h.Svc.RenameSession(r.Context(), p, r.PathValue("id"), body.Title); err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	httpx.WriteJSON(w, http.StatusOK, map[string]string{"title": strings.TrimSpace(body.Title)})
+}
+
+func (h *Handlers) deleteSession(w http.ResponseWriter, r *http.Request) {
+	p, ok := h.principal(r)
+	if !ok {
+		httpx.WriteError(w, r, httpx.ErrUnauthorized())
+		return
+	}
+	if err := h.Svc.DeleteSession(r.Context(), p, r.PathValue("id")); err != nil {
+		h.writeError(w, r, err)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handlers) principal(r *http.Request) (auth.Principal, bool) {
