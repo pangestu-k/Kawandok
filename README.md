@@ -7,50 +7,125 @@ A permission-aware internal company assistant, accessed by chat, that can locate
 
 ## Default technical decisions
 - **Monorepo** with `apps/web` (Next.js/TypeScript), `apps/api` (Go), and `apps/worker` (Python).
-- **Cloud LLM** behind a provider interface: free-tier compatible in development, production model configurable. Never embed model keys in web client.
+- **LLM and embedding providers** are mock by default and OpenAI-compatible when configured. Never embed provider keys in the web client.
 - **PostgreSQL + pgvector** for relational records, document chunks, and embeddings; PostgreSQL full-text search + vector retrieval.
-- **Cloudflare R2** private object bucket for original documents in dev and initial production; access through backend-generated short-lived signed URLs or authenticated streaming.
+- **SeaweedFS** provides local S3-compatible object storage; Cloudflare R2 is the intended private object store for a later production deployment.
 - **Redis-based background jobs** to run ingestion asynchronously.
-- **Docker Compose** for local Postgres/Redis and apps. R2 remains remote.
+- **Docker Compose** runs local infrastructure only; API, worker, and web run as normal development processes.
 - **Modular monolith**, not microservices proliferation; the document worker is a separate process.
 
-## Development quickstart (M0)
+## Local development quickstart
 
-Prerequisites: Go 1.22+, Node.js 20+, Python 3.10+, Docker.
+### Prerequisites
 
-```sh
-make up            # infra: Postgres(pgvector):15432, Redis:16379, S3 (SeaweedFS):19000
-make migrate       # apply infra/db/migrations
-go run ./apps/api/cmd/api   # API on :18080 — reads .env automatically
-cd apps/worker && python -m worker.main   # ingestion worker — reads .env automatically
-cd apps/web && npm install && npm run dev   # UI on :3000, proxy /api -> :18080
-```
+- Docker Desktop
+- Go 1.22+
+- Python 3.10+
+- Node.js 20+ and npm
+- GNU Make plus a POSIX shell (Git Bash or WSL) when using the `make` commands
 
-`make` is for infrastructure and helper tasks only — the three apps run as
-plain processes. One-time setup: `cp infra/.env.example .env` (repo root);
-the API and worker auto-load that file (existing environment variables win).
+### One-time setup
 
-Verification (all offline, no cloud credentials required):
+Run from the repository root:
 
 ```sh
-make test          # Go + Python + web tests
-make lint          # go vet / ruff+mypy (if installed) / eslint
-make secret-scan   # gitleaks if installed, else pattern fallback
-make down          # stop the dev stack
+cp infra/.env.example .env
+
+cd apps/worker && python -m venv .venv && . .venv/bin/activate && python -m pip install -e ".[dev]"
+cd ../web && npm ci
+cd ../..
 ```
 
-Configuration template: `infra/.env.example` â€” copy to `.env` and fill in before using real providers. Never commit `.env` or real credentials. Dev-only database passwords exist in migration 000001 and must be rotated before any shared environment (see `docs/DECISIONS.md`).
+On Windows PowerShell, create the `.env` file with `Copy-Item infra\.env.example .env`.
+To create and install the worker environment, use
+`py -m venv apps\worker\.venv` then
+` .\apps\worker\.venv\Scripts\python.exe -m pip install -e ".\apps\worker[dev]"`.
 
-Development auth fixture: request a short-lived JWT for a seeded user, then pass it as a bearer token:
+The API and worker find the nearest `.env` automatically. Existing process
+environment variables take precedence, so do not commit `.env` or put real
+credentials in it.
+
+### Start the project
+
+Start local infrastructure and apply migrations:
 
 ```sh
-TOKEN=$(curl -s -X POST http://127.0.0.1:18080/auth/dev/token \
-  -H "Content-Type: application/json" \
-  -d '{"email":"admin@dev.local"}' | python -c "import sys,json;print(json.load(sys.stdin)['access_token'])")
-curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:18080/v1/documents
+make up
+make migrate
 ```
 
-Seeded dev users: `admin@dev.local` (admin), `budi@dev.local` (employee, General), `siti@dev.local` (finance, Finance), `rian@dev.local` (employee, Finance). Upload requires the admin role and grants are deny-by-default. The dev issuer is disabled by the production startup guard; OIDC is still required before launch.
+Run these commands in three separate terminals:
+
+```sh
+make run-go       # API: http://127.0.0.1:18080
+make run-worker   # ingestion worker
+make run-web      # web: http://127.0.0.1:3000
+```
+
+The equivalent commands without Make are:
+
+```sh
+docker compose -f infra/docker-compose.yml up -d
+go -C apps/api run ./cmd/migrate -dir ../../infra/db/migrations -database "postgres://migrator:dev_migrator_password@127.0.0.1:15432/office_ai?sslmode=disable" up
+go run ./apps/api/cmd/api
+cd apps/worker && python -m worker.main
+cd apps/web && npm run dev
+```
+
+Compose publishes only local infrastructure: PostgreSQL on `15432`, Redis on
+`16379`, and S3-compatible SeaweedFS on `19000`. The API uses `18080` and the
+web UI uses `3000`, so they can run beside projects using the usual `5432` and
+`6379` ports.
+
+### First local simulation
+
+Open `http://localhost:3000` and sign in as `admin@dev.local`. In **Admin
+Dokumen**, upload a synthetic PDF, DOCX, or XLSX and set its department and
+grants. The API stores it in local SeaweedFS; the worker parses and indexes it;
+the status becomes `ready` when processing succeeds. Only a user with a
+matching grant can find or ask about the document.
+
+Seeded development users are `admin@dev.local` (admin), `budi@dev.local`
+(employee, General), `siti@dev.local` (finance, Finance), and
+`rian@dev.local` (employee, Finance). Upload requires the admin role and
+access is deny-by-default.
+
+### Mock and optional AI providers
+
+The default LLM and embedding providers are deterministic mocks. They require
+no cloud account and let you test upload, authorization, retrieval, citations,
+and finance flows. Mock embeddings are not semantic, so natural-language
+matching is limited; full-text matching still works.
+
+The `openai` provider configuration accepts an OpenAI-compatible endpoint for
+both chat and embeddings. API and worker must use the same embedding endpoint,
+model, API key, and dimension. Changing an embedding model or dimension
+requires a fresh vector schema and re-indexing all documents.
+
+For local learning, malware scanning defaults to `disabled`. Before accepting
+real documents, run a ClamAV-compatible daemon and set
+`WORKER_MALWARE_SCAN_MODE=clamav`. Worker startup in `prod` requires it.
+
+### Common Make targets
+
+```sh
+make test                         # Go, Python, and web tests
+make lint                         # Go vet, Ruff/Mypy when installed, ESLint
+make secret-scan                  # gitleaks or the tracked-file fallback
+make backup-db                    # compressed local PostgreSQL backup
+make restore-db BACKUP_FILE=...   # restore into a scratch database
+make loadtest N=200 C=10          # authenticated read-path load test
+make down                         # stop infra; keeps local volumes/data
+```
+
+`docker compose -f infra/docker-compose.yml down -v` removes local database
+and object-storage volumes; use it only when intentionally resetting the
+simulation environment.
+
+See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) and
+[docs/SECURITY-REVIEW.md](docs/SECURITY-REVIEW.md) before considering any
+non-local deployment. Production startup remains intentionally blocked until
+OIDC, retention, storage, and provider decisions are made.
 
 ### IDE troubleshooting (Go imports)
 
