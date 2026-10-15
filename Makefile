@@ -5,31 +5,44 @@ DATABASE_URL ?= postgres://migrator:dev_migrator_password@127.0.0.1:15432/office
 ACL_TEST_DATABASE_URL ?= postgres://migrator:dev_migrator_password@127.0.0.1:15432/office_ai?sslmode=disable
 WORKER_TEST_DATABASE_URL ?= postgres://migrator:dev_migrator_password@127.0.0.1:15432/office_ai?sslmode=disable
 
-.PHONY: help dev up down migrate migrate-down migrate-version test test-go test-worker test-web lint lint-go lint-worker lint-web secret-scan
+.PHONY: help dev up down run-go run-worker run-web migrate migrate-down migrate-version test test-go test-worker test-web lint lint-go lint-worker lint-web secret-scan backup-db restore-db loadtest
 
 help:
 	@echo "Targets:"
-	@echo "  dev              start infra and print commands to run api/worker/web"
-	@echo "  up / down        start/stop local Postgres(pgvector) + Redis"
+	@echo "  infra            start infra (Postgres+Redis+S3) and print run hints"
+	@echo "  up / down        start/stop infra containers"
+	@echo "  run-go           run the API (foreground; reads .env)"
+	@echo "  run-worker       run the ingestion worker (foreground)"
+	@echo "  run-web          run the web UI dev server (foreground, :3000)"
 	@echo "  migrate          apply pending migrations"
 	@echo "  migrate-down     roll back the latest migration"
 	@echo "  migrate-version  show current schema version"
 	@echo "  test             run Go, Python and web tests (offline)"
 	@echo "  lint             go vet + ruff/mypy (if installed) + eslint"
 	@echo "  secret-scan      gitleaks if installed, else pattern scan"
+	@echo "  backup-db / restore-db / loadtest"
 
 dev: up
 	@echo "Infra running. One-time setup: cp infra/.env.example .env"
-	@echo "Start apps in separate terminals (they read .env automatically):"
-	@echo "  API:    go run ./apps/api/cmd/api"
-	@echo "  Worker: cd apps/worker && python -m worker.main"
-	@echo "  Web:    cd apps/web && npm run dev"
+	@echo "Start apps in separate terminals:"
+	@echo "  make run-go      (API on :18080)"
+	@echo "  make run-worker  (ingestion worker)"
+	@echo "  make run-web     (UI on :3000)"
 
 up:
 	docker compose -f $(COMPOSE_FILE) up -d
 
 down:
 	docker compose -f $(COMPOSE_FILE) down
+
+run-go:
+	go run ./apps/api/cmd/api
+
+run-worker:
+	cd apps/worker && python -m worker.main
+
+run-web:
+	cd apps/web && npm run dev
 
 migrate:
 	go -C apps/api run ./cmd/migrate -dir ../../infra/db/migrations -database "$(DATABASE_URL)" up
