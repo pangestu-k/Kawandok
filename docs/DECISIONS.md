@@ -88,6 +88,12 @@ Use for new decisions made during implementation. Record date, decision, options
 - **Load test**: `make loadtest` (Go tool `cmd/loadtest`) — 200 req / c=10 against the authenticated read path reported 0 failures, p50 0.54 ms, p95 30 ms, and the rate limiter correctly throttled the remainder.
 - A Docker Desktop backend process on this machine was accidentally stopped during port probing (8080 was held by Docker) and was immediately restarted; all containers recovered healthy. Recorded for transparency.
 
+## Database test terpisah (2026-10-15)
+- Gejala: setelah `make test`, tabel `departments`/`users`/`roles` di database dev kosong sehingga dropdown "Departemen pemilik" di FE kosong dan tabel Knowledge Base ikut kosong.
+- Penyebab: `ACL_TEST_DATABASE_URL`/`WORKER_TEST_DATABASE_URL` menunjuk database **dev yang sama** (`office_ai`), dan test Go melakukan TRUNCATE. Dev seed baru terisi lagi saat API start berikutnya.
+- Solusi: `make test-db` membuat + memigrasi database `office_ai_test`; `make test` memakai URL itu (bisa dioverride lewat `TEST_DATABASE_URL`). Database dev tidak lagi tersentuh test. Diverifikasi: `make test` menyisakan 4 departemen & 4 user di `office_ai`.
+- FE `/documents` sekaligus diperbaiki: pemilik wajib dipilih (default ke departemen pertama + validasi), penerima jadi `Select mode="multiple"` dari daftar departemen nyata, dan kondisi "belum ada departemen"/gagal memuat ditampilkan eksplisit.
+
 ## Dua mode jawaban: grounded vs general (2026-10-15)
 - **Masalah**: system prompt hanya boleh "Jawab HANYA berdasarkan EVIDENCE", sehingga obrolan biasa (`test`, `apa kabar?`, `apa itu X?`) selalu dijawab "tidak dapat menemukan jawaban" walau LLM aktif.
 - **Perbaikan**: tiga system prompt di `internal/chat/service.go`:

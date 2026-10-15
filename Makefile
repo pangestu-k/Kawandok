@@ -2,10 +2,13 @@
 
 COMPOSE_FILE := infra/docker-compose.yml
 DATABASE_URL ?= postgres://migrator:dev_migrator_password@127.0.0.1:15432/office_ai?sslmode=disable
-ACL_TEST_DATABASE_URL ?= postgres://migrator:dev_migrator_password@127.0.0.1:15432/office_ai?sslmode=disable
-WORKER_TEST_DATABASE_URL ?= postgres://migrator:dev_migrator_password@127.0.0.1:15432/office_ai?sslmode=disable
+# Tests truncate tables, so they must never run against the dev database.
+TEST_DATABASE_NAME ?= office_ai_test
+TEST_DATABASE_URL ?= postgres://migrator:dev_migrator_password@127.0.0.1:15432/$(TEST_DATABASE_NAME)?sslmode=disable
+ACL_TEST_DATABASE_URL ?= $(TEST_DATABASE_URL)
+WORKER_TEST_DATABASE_URL ?= $(TEST_DATABASE_URL)
 
-.PHONY: help dev up down run-go run-worker run-web migrate migrate-down migrate-version test test-go test-worker test-web lint lint-go lint-worker lint-web secret-scan backup-db restore-db loadtest
+.PHONY: help dev up down run-go run-worker run-web migrate migrate-down migrate-version test-db test test-go test-worker test-web lint lint-go lint-worker lint-web secret-scan backup-db restore-db loadtest
 
 help:
 	@echo "Targets:"
@@ -17,7 +20,7 @@ help:
 	@echo "  migrate          apply pending migrations"
 	@echo "  migrate-down     roll back the latest migration"
 	@echo "  migrate-version  show current schema version"
-	@echo "  test             run Go, Python and web tests (offline)"
+	@echo "  test             run Go, Python and web tests (offline, separate test database)"
 	@echo "  lint             go vet + ruff/mypy (if installed) + eslint"
 	@echo "  secret-scan      gitleaks if installed, else pattern scan"
 	@echo "  backup-db / restore-db / loadtest"
@@ -53,10 +56,16 @@ migrate-down:
 migrate-version:
 	go -C apps/api run ./cmd/migrate -dir ../../infra/db/migrations -database "$(DATABASE_URL)" version
 
-test: test-go test-worker test-web
+test-db:
+	@docker compose -f $(COMPOSE_FILE) exec -T postgres psql -U $${POSTGRES_USER:-migrator} -d postgres -tc "SELECT 1 FROM pg_database WHERE datname='$(TEST_DATABASE_NAME)'" | grep -q 1 \
+		|| docker compose -f $(COMPOSE_FILE) exec -T postgres psql -U $${POSTGRES_USER:-migrator} -d postgres -c "CREATE DATABASE $(TEST_DATABASE_NAME)" >/dev/null
+	@go -C apps/api run ./cmd/migrate -dir ../../infra/db/migrations -database "$(TEST_DATABASE_URL)" up >/dev/null
+	@echo "Test database $(TEST_DATABASE_NAME) ready (never the dev database)."
+
+test: test-db test-go test-worker test-web
 
 test-go:
-	cd apps/api && ACL_TEST_DATABASE_URL="$(ACL_TEST_DATABASE_URL)" go test -p 1 ./...
+	cd apps/api && ACL_TEST_DATABASE_URL="$(ACL_TEST_DATABASE_URL)" go test -count=1 -p 1 ./...
 
 test-worker:
 	cd apps/worker && WORKER_TEST_DATABASE_URL="$(WORKER_TEST_DATABASE_URL)" python -m unittest discover -s tests -v

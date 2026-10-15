@@ -198,6 +198,20 @@ export default function DocumentsPage() {
       <UploadModal
         open={uploadOpen}
         departments={departmentsQuery.data ?? []}
+        departmentsLoading={departmentsQuery.isLoading || departmentsQuery.isFetching}
+        departmentHint={
+          departmentsQuery.isError ? (
+            <span style={{ color: "#b42318" }}>
+              Gagal memuat daftar departemen: {describe(departmentsQuery.error)}. Coba muat ulang
+              halaman.
+            </span>
+          ) : departmentsQuery.isSuccess && (departmentsQuery.data ?? []).length === 0 ? (
+            <span style={{ color: "#b42318" }}>
+              Belum ada departemen. Isi data dev (jalankan API dengan API_DEV_SEED=true) atau
+              minta admin membuat departemen.
+            </span>
+          ) : undefined
+        }
         onClose={() => setUploadOpen(false)}
         onUploaded={() => {
           setUploadOpen(false);
@@ -264,7 +278,7 @@ type UploadForm = {
   title: string;
   classification: string;
   departmentId: string;
-  grantDepartment: string;
+  grantDepartments: string[];
   grantRead: boolean;
   grantDownload: boolean;
 };
@@ -272,11 +286,15 @@ type UploadForm = {
 function UploadModal({
   open,
   departments,
+  departmentsLoading,
+  departmentHint,
   onClose,
   onUploaded,
 }: {
   open: boolean;
   departments: Department[];
+  departmentsLoading?: boolean;
+  departmentHint?: React.ReactNode;
   onClose: () => void;
   onUploaded: () => void;
 }) {
@@ -288,10 +306,19 @@ function UploadModal({
   useEffect(() => {
     if (open) {
       form.resetFields();
+      // The owning department defaults to the first one so the field is never
+      // submitted empty; the user can still pick another department.
+      form.setFieldsValue({
+        classification: "internal",
+        grantRead: true,
+        grantDownload: false,
+        departmentId: departments[0]?.id,
+        grantDepartments: [],
+      });
       setFile(null);
       setError("");
     }
-  }, [open, form]);
+  }, [open, form, departments]);
 
   const submit = async () => {
     const values = await form.validateFields();
@@ -308,11 +335,14 @@ function UploadModal({
     setError("");
     try {
       const grants: Array<Record<string, string>> = [];
-      const dept = values.grantDepartment?.trim();
-      if (dept && values.grantRead)
-        grants.push({ principal_type: "department", principal_name: dept, action: "read" });
-      if (dept && values.grantDownload)
-        grants.push({ principal_type: "department", principal_name: dept, action: "download" });
+      for (const dept of values.grantDepartments ?? []) {
+        const name = dept.trim();
+        if (!name) continue;
+        if (values.grantRead)
+          grants.push({ principal_type: "department", principal_name: name, action: "read" });
+        if (values.grantDownload)
+          grants.push({ principal_type: "department", principal_name: name, action: "download" });
+      }
       await uploadDocument({
         file,
         title: values.title.trim(),
@@ -339,11 +369,7 @@ function UploadModal({
       onCancel={onClose}
       destroyOnClose
     >
-      <Form<UploadForm>
-        form={form}
-        layout="vertical"
-        initialValues={{ classification: "internal", grantRead: true, grantDepartment: "Finance" }}
-      >
+      <Form<UploadForm> form={form} layout="vertical">
         <Form.Item
           name="title"
           label="Judul"
@@ -360,10 +386,24 @@ function UploadModal({
             ]}
           />
         </Form.Item>
-        <Form.Item name="departmentId" label="Departemen pemilik">
+        <Form.Item
+          name="departmentId"
+          label="Departemen pemilik"
+          extra={departmentHint}
+          rules={[{ required: true, message: "Pilih departemen pemilik" }]}
+        >
           <Select
-            options={departments.map((d) => ({ value: d.id, label: d.name }))}
-            placeholder={departments.length ? undefined : "memuatâ€¦"}
+            loading={departmentsLoading}
+            placeholder={
+              departmentsLoading ? "Memuat departemen..." : "Pilih departemen pemilik"
+            }
+            options={departments.map((d) => ({
+              value: d.id,
+              label: `${d.name} (${d.user_count} anggota)`,
+            }))}
+            notFoundContent={
+              departmentsLoading ? "Memuat..." : "Belum ada departemen"
+            }
           />
         </Form.Item>
         <Form.Item label="File (PDF/DOCX/XLSX, maks 25 MB)">
@@ -377,8 +417,22 @@ function UploadModal({
         </Form.Item>
         <fieldset className="grants">
           <legend className="small muted">Beri akses (deny-by-default)</legend>
-          <Form.Item name="grantDepartment" label="Departemen penerima">
-            <Input placeholder="Finance" />
+          <Form.Item
+            name="grantDepartments"
+            label="Departemen penerima"
+            extra="Boleh kosong. Kosong berarti hanya departemen pemilik yang bisa membaca."
+          >
+            <Select
+              mode="multiple"
+              allowClear
+              loading={departmentsLoading}
+              placeholder="Pilih departemen yang boleh membaca"
+              options={departments.map((d) => ({ value: d.name, label: d.name }))}
+              optionFilterProp="label"
+              notFoundContent={
+                departmentsLoading ? "Memuat..." : "Belum ada departemen"
+              }
+            />
           </Form.Item>
           <Space>
             <Form.Item name="grantRead" valuePropName="checked" style={{ marginBottom: 0 }}>
