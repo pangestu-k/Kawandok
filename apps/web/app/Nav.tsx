@@ -1,10 +1,17 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 
 import { isLoggedIn, logout } from "../lib/api";
 
 export default function Nav() {
+  const [loggedIn, setLoggedIn] = useState(false);
+
+  useEffect(() => {
+    setLoggedIn(isLoggedIn());
+  }, []);
+
   const signOut = () => {
     logout();
     window.location.href = "/login";
@@ -16,7 +23,7 @@ export default function Nav() {
       <span className="spacer" />
       <Link href="/chat">Chat</Link>
       <Link href="/admin">Admin Dokumen</Link>
-      {isLoggedIn() ? (
+      {loggedIn ? (
         <button type="button" className="link" onClick={signOut}>
           Keluar
         </button>
