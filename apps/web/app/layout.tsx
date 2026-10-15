@@ -1,21 +1,20 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
-import Nav from "./Nav";
-
+import { Providers } from "./providers";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Office AI Assistant",
-  description: "Permission-aware internal company assistant",
+  title: "KantorHub — Internal Workspace",
+  description:
+    "Workspace internal: chat AI dengan dokumen perusahaan, knowledge base, dan laporan.",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="id">
       <body>
-        <Nav />
-        {children}
+        <Providers>{children}</Providers>
       </body>
     </html>
   );
