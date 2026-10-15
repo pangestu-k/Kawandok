@@ -340,6 +340,103 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFoundUniform"
+  /me:
+    get:
+      summary: Profil pengguna yang sedang masuk
+      operationId: getMe
+      responses:
+        "200":
+          description: Identitas, departemen, roles, dan flag admin
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+                  email: { type: string }
+                  display_name: { type: string }
+                  department_id: { type: string, format: uuid }
+                  roles: { type: array, items: { type: string } }
+                  is_admin: { type: boolean }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /users:
+    get:
+      summary: Daftar pengguna (khusus admin; ter-audit)
+      operationId: listUsers
+      responses:
+        "200":
+          description: Pengguna beserta departemen dan roles
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string, format: uuid }
+                        email: { type: string }
+                        display_name: { type: string }
+                        status: { type: string }
+                        department: { type: string }
+                        roles: { type: array, items: { type: string } }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Bukan admin
+  /roles:
+    get:
+      summary: Daftar role beserta jumlah pengguna (khusus admin)
+      operationId: listRoles
+      responses:
+        "200":
+          description: Daftar role
+        "403":
+          description: Bukan admin
+  /departments:
+    get:
+      summary: Daftar departemen beserta jumlah anggota
+      operationId: listDepartments
+      responses:
+        "200":
+          description: Daftar departemen
+  /finance/summary:
+    get:
+      summary: |
+        Agregat read-only transaksi keuangan tervalidasi; cakupan departemen
+        dipaksakan server-side dan setiap panggilan dicatat di audit.
+      operationId: financeSummary
+      parameters:
+        - { in: query, name: department, schema: { type: string } }
+        - { in: query, name: start, required: true, schema: { type: string, format: date } }
+        - { in: query, name: end, required: true, schema: { type: string, format: date } }
+      responses:
+        "200":
+          description: Total minor units + breakdown kategori (satu mata uang)
+        "403":
+          description: FINANCE_FORBIDDEN (di luar cakupan departemen)
+        "409":
+          description: CONFLICTING_CURRENCIES
+  /finance/compare:
+    get:
+      summary: Bandingkan dua periode (read-only, ter-audit, ter-cakup)
+      operationId: financeCompare
+      parameters:
+        - { in: query, name: department, schema: { type: string } }
+        - { in: query, name: a_start, required: true, schema: { type: string, format: date } }
+        - { in: query, name: a_end, required: true, schema: { type: string, format: date } }
+        - { in: query, name: b_start, required: true, schema: { type: string, format: date } }
+        - { in: query, name: b_end, required: true, schema: { type: string, format: date } }
+      responses:
+        "200":
+          description: Totals, selisih, dan persentase
+        "403":
+          description: FINANCE_FORBIDDEN
+        "409":
+          description: CONFLICTING_CURRENCIES
 components:
   securitySchemes:
     bearerAuth:

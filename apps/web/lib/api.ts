@@ -32,7 +32,88 @@ export type DocumentRow = {
   size_bytes: number;
 };
 
-export type Department = { id: string; name: string };
+export type Department = { id: string; name: string; user_count: number };
+
+export type IdentityUser = {
+  id: string;
+  email: string;
+  display_name: string;
+  status: string;
+  department: string;
+  roles: string[];
+};
+
+export type Role = { id: string; name: string; user_count: number };
+
+export type Me = {
+  id: string;
+  email: string;
+  display_name: string;
+  department_id: string;
+  roles: string[];
+  is_admin: boolean;
+};
+
+export async function getMe(): Promise<Me> {
+  return jsonFetch<Me>("/v1/me");
+}
+
+export async function listUsers(): Promise<IdentityUser[]> {
+  const body = await jsonFetch<{ users: IdentityUser[] }>("/v1/users");
+  return body.users ?? [];
+}
+
+export async function listRoles(): Promise<Role[]> {
+  const body = await jsonFetch<{ roles: Role[] }>("/v1/roles");
+  return body.roles ?? [];
+}
+
+export type FinanceSummary = {
+  currency: string;
+  total_minor_units: number;
+  by_category: Array<{ category: string; total_minor_units: number }>;
+  start: string;
+  end: string;
+};
+
+export type FinanceComparison = {
+  currency: string;
+  first_period_minor_units: number;
+  second_period_minor_units: number;
+  delta_minor_units: number;
+  delta_percent?: number | null;
+  first_period_start: string;
+  first_period_end: string;
+  second_period_start: string;
+  second_period_end: string;
+};
+
+export async function financeSummary(params: {
+  department: string;
+  start: string;
+  end: string;
+}): Promise<FinanceSummary> {
+  const qs = new URLSearchParams({ start: params.start, end: params.end });
+  if (params.department) qs.set("department", params.department);
+  return jsonFetch(`/v1/finance/summary?${qs.toString()}`);
+}
+
+export async function financeCompare(params: {
+  department: string;
+  aStart: string;
+  aEnd: string;
+  bStart: string;
+  bEnd: string;
+}): Promise<FinanceComparison> {
+  const qs = new URLSearchParams({
+    a_start: params.aStart,
+    a_end: params.aEnd,
+    b_start: params.bStart,
+    b_end: params.bEnd,
+  });
+  if (params.department) qs.set("department", params.department);
+  return jsonFetch(`/v1/finance/compare?${qs.toString()}`);
+}
 
 export class ApiError extends Error {
   status: number;

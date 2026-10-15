@@ -24,6 +24,7 @@ import (
 	"office-ai-agent/apps/api/internal/embedding"
 	"office-ai-agent/apps/api/internal/finance"
 	"office-ai-agent/apps/api/internal/httpapi"
+	"office-ai-agent/apps/api/internal/identity"
 	"office-ai-agent/apps/api/internal/llm"
 	"office-ai-agent/apps/api/internal/logging"
 	"office-ai-agent/apps/api/internal/queue"
@@ -119,6 +120,9 @@ func run() error {
 		}
 
 		financeSvc := finance.NewService(db, auditLog, log)
+		finance.Register(mux, financeSvc)
+		identitySvc := identity.NewService(db, auditLog, log)
+		identity.Register(mux, &identity.Handlers{Svc: identitySvc, Log: log})
 		chatSvc := chat.NewService(chat.NewRepo(db), retrieval.NewSearcher(db, embedProvider, cfg.RetrievalTopK), llmProvider, chat.NewAuthorizer(checker), financeSvc, log)
 		chat.Register(mux, &chat.Handlers{Svc: chatSvc})
 		jwtConfig := auth.JWTConfig{Issuer: cfg.JWTIssuer, Audience: cfg.JWTAudience, Key: []byte(cfg.JWTSigningKey), TTL: time.Duration(cfg.JWTTTLMinutes) * time.Minute}

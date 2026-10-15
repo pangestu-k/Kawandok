@@ -1,8 +1,9 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
-import { getToken, loginAs, logout as clearAuth } from "../lib/api";
+import { getMe, getToken, loginAs, logout as clearAuth, type Me } from "../lib/api";
 
 export type AuthStatus = "loading" | "authed" | "anon";
 
@@ -59,4 +60,14 @@ export function useAuth(): AuthContextValue {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error("useAuth must be used inside AuthProvider");
   return ctx;
+}
+
+export function useMe() {
+  const { status } = useAuth();
+  return useQuery({
+    queryKey: ["me"],
+    queryFn: getMe,
+    enabled: status === "authed",
+    staleTime: 60_000,
+  });
 }

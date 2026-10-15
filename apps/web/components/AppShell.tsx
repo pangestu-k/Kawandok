@@ -11,35 +11,27 @@ import {
 } from "antd";
 import {
   BookOutlined,
-  CheckSquareOutlined,
-  FileTextOutlined,
   LogoutOutlined,
   MenuFoldOutlined,
   MenuUnfoldOutlined,
   MessageOutlined,
   PieChartOutlined,
   SearchOutlined,
-  SettingOutlined,
+  TeamOutlined,
+  WalletOutlined,
 } from "@ant-design/icons";
+import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
 
-import { useAuth } from "./auth";
+import { useAuth, useMe } from "./auth";
 
 const { Sider, Header, Content } = Layout;
 const { Text } = Typography;
 
-const NAV_ITEMS = [
-  { key: "/chat", icon: <MessageOutlined />, label: "Chat" },
-  { key: "/documents", icon: <BookOutlined />, label: "Knowledge Base" },
-  { key: "/approvals", icon: <CheckSquareOutlined />, label: "Approvals" },
-  { key: "/tasks", icon: <FileTextOutlined />, label: "Tasks" },
-  { key: "/reports", icon: <PieChartOutlined />, label: "Reports" },
-  { key: "/settings", icon: <SettingOutlined />, label: "Settings" },
-];
-
 export function AppShell({ children }: { children: ReactNode }) {
-  const { status, email, logout } = useAuth();
+  const { status, logout } = useAuth();
+  const me = useMe();
   const pathname = usePathname();
   const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
@@ -61,9 +53,24 @@ export function AppShell({ children }: { children: ReactNode }) {
     );
   }
 
-  const selected = NAV_ITEMS.find(
+  const isAdmin = me.data?.is_admin === true;
+
+  const navItems = [
+    { key: "/chat", icon: <MessageOutlined />, label: link("/chat", "Chat") },
+    { key: "/documents", icon: <BookOutlined />, label: link("/documents", "Knowledge Base") },
+    { key: "/departments", icon: <TeamOutlined />, label: link("/departments", "Departemen") },
+    ...(isAdmin
+      ? [{ key: "/users", icon: <TeamOutlined />, label: link("/users", "Users & Roles") }]
+      : []),
+    { key: "/financial", icon: <WalletOutlined />, label: link("/financial", "Financial") },
+    { key: "/reports", icon: <PieChartOutlined />, label: link("/reports", "Reports") },
+  ];
+
+  const selected = navItems.find(
     (item) => pathname === item.key || pathname.startsWith(item.key + "/")
   );
+
+  const displayName = me.data?.display_name ?? me.data?.email ?? "…";
 
   return (
     <Layout style={{ minHeight: "100vh" }}>
@@ -124,8 +131,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             mode="inline"
             inlineCollapsed={collapsed}
             selectedKeys={selected ? [selected.key] : []}
-            items={NAV_ITEMS}
-            onClick={({ key }) => router.push(key)}
+            items={navItems}
             style={{ background: "transparent", borderInlineEnd: 0 }}
           />
 
@@ -187,14 +193,14 @@ export function AppShell({ children }: { children: ReactNode }) {
           />
           <div style={{ display: "flex", alignItems: "center", gap: 11 }}>
             <Avatar style={{ background: "#125872" }}>
-              {(email ?? "?").slice(0, 2).toUpperCase()}
+              {(me.data?.display_name ?? "?").slice(0, 2).toUpperCase()}
             </Avatar>
             <div style={{ lineHeight: 1.2 }}>
               <Text strong style={{ display: "block", fontSize: 12 }}>
-                {email ?? "-"}
+                {displayName}
               </Text>
               <Text type="secondary" style={{ fontSize: 10 }}>
-                Online
+                {me.data?.roles.join(", ") || "anggota"}
               </Text>
             </div>
           </div>
@@ -206,5 +212,13 @@ export function AppShell({ children }: { children: ReactNode }) {
         </Content>
       </Layout>
     </Layout>
+  );
+}
+
+function link(href: string, label: string): ReactNode {
+  return (
+    <Link href={href} style={{ color: "inherit", textDecoration: "none" }}>
+      {label}
+    </Link>
   );
 }

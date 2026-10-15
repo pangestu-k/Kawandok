@@ -88,6 +88,14 @@ Use for new decisions made during implementation. Record date, decision, options
 - **Load test**: `make loadtest` (Go tool `cmd/loadtest`) — 200 req / c=10 against the authenticated read path reported 0 failures, p50 0.54 ms, p95 30 ms, and the rate limiter correctly throttled the remainder.
 - A Docker Desktop backend process on this machine was accidentally stopped during port probing (8080 was held by Docker) and was immediately restarted; all containers recovered healthy. Recorded for transparency.
 
+## Frontend module adjustment (2026-10-15)
+- **Placeholder pages removed** (Approvals, Tasks, Settings): their backend does not exist, and per project rules the UI must not present unimplemented features. They are also removed from the navigation.
+- **New backend-backed pages**: Departments (`GET /v1/departments` now includes `user_count`), Users & Roles (admin-only, audited `GET /v1/users` + `GET /v1/roles`; non-admin receives 403 and the denial is audited), and Financial (REST read-only `GET /v1/finance/summary` + `GET /v1/finance/compare` with the same server-side department scoping, FINANCE_FORBIDDEN/CONFLICTING_CURRENCIES semantics, and audit as the chat tools).
+- **`GET /v1/me`** added so the shell can render the signed-in user (name, roles) and gate admin-only navigation without embedding role data in the JWT claims or localStorage.
+- **Finance scope default softened for usability**: a non-elevated user requesting without a department now gets their own department instead of an error; explicitly requesting `all` or another department still requires finance/admin and 403s otherwise.
+- **TanStack Query Devtools** added in development builds only.
+- **Navigation performance**: menu labels render `next/link` (prefetching), and `experimental.optimizePackageImports` covers antd/@ant-design/icons/react-query. Note that `next dev` still compiles each route on first visit; `npm run build && npm start` (or after our build) removes that entirely.
+
 ## Infrastructure coexistence decision (2026-10-14)
 - **PostgreSQL stays a dedicated, separate instance for this project**: container `pgvector/pgvector:pg16` on `127.0.0.1:15432`, named volume `infra_pgdata`. It does **not** share an instance, data directory, or volume with the `terasrumah-bsn-infra` stack (sharing a data directory between two Postgres containers is unsafe; sharing one instance was considered and rejected). Coexistence verified live: both stacks run simultaneously with disjoint host ports (15432/16379/19000 vs 5432/6379/8080/etc.), container names, networks, and volumes. Redis and SeaweedFS remain project-local as well.
 

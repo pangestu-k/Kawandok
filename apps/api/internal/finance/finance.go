@@ -39,11 +39,21 @@ func (s *Service) resolveScope(ctx context.Context, p auth.Principal, requested 
 	requested = strings.TrimSpace(requested)
 
 	if requested == "" || strings.EqualFold(requested, "all") {
-		if !elevated {
-			return departmentScope{}, httpx.NewAPIError(403, "FINANCE_FORBIDDEN",
-				"accessing all departments requires the finance role")
+		if strings.EqualFold(requested, "all") {
+			if !elevated {
+				return departmentScope{}, httpx.NewAPIError(403, "FINANCE_FORBIDDEN",
+					"accessing all departments requires the finance role")
+			}
+			return departmentScope{all: true}, nil
 		}
-		return departmentScope{all: true}, nil
+		if elevated {
+			return departmentScope{all: true}, nil
+		}
+		if p.DepartmentID == "" {
+			return departmentScope{}, httpx.NewAPIError(403, "FINANCE_FORBIDDEN",
+				"your account is not linked to a department; ask an administrator")
+		}
+		return departmentScope{department: p.DepartmentID}, nil
 	}
 
 	var deptID string

@@ -6,11 +6,13 @@ import { ConfigProvider } from "antd";
 import { describe, expect, it } from "vitest";
 
 import { AuthProvider } from "../components/auth";
-import ApprovalsPage from "../app/(workspace)/approvals/page";
 import ChatPage from "../app/(workspace)/chat/page";
+import DepartmentsPage from "../app/(workspace)/departments/page";
 import DocumentsPage from "../app/(workspace)/documents/page";
+import FinancialPage from "../app/(workspace)/financial/page";
 import LoginPage from "../app/login/page";
 import ReportsPage from "../app/(workspace)/reports/page";
+import UsersPage from "../app/(workspace)/users/page";
 
 function TestProviders({ children }: { children: ReactNode }) {
   const [client] = useState(
@@ -48,13 +50,25 @@ describe("web smoke (antd + tanstack query)", () => {
     expect(html).toContain("Unggah Dokumen");
   });
 
+  it("renders departments page", () => {
+    const html = renderPage(createElement(DepartmentsPage));
+    expect(html).toContain("Departemen");
+    expect(html).toContain("Jumlah Anggota");
+  });
+
+  it("renders users & roles page", () => {
+    const html = renderPage(createElement(UsersPage));
+    expect(html).toContain("Users &amp; Roles");
+  });
+
+  it("renders financial page", () => {
+    const html = renderPage(createElement(FinancialPage));
+    expect(html).toContain("Ringkasan periode");
+    expect(html).toContain("Perbandingan dua periode");
+  });
+
   it("renders reports with real data sections", () => {
     const html = renderPage(createElement(ReportsPage));
     expect(html).toContain("Distribusi status");
-  });
-
-  it("renders placeholder modules without faking features", () => {
-    const approvals = renderPage(createElement(ApprovalsPage));
-    expect(approvals).toContain("membutuhkan backend");
   });
 });
