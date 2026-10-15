@@ -9,6 +9,7 @@ import redis
 
 from worker.config import WorkerConfig
 from worker.embedder import MockEmbedder, OpenAIEmbedder
+from worker.envfile import load_dotenv
 from worker.ingest import Processor
 from worker.queue import Consumer
 from worker.scanner import ClamAVScanner, DisabledScanner
@@ -21,6 +22,9 @@ def main() -> int:
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
     )
     log = logging.getLogger("worker")
+    env_path = load_dotenv()
+    if env_path:
+        log.info("loaded environment file: %s", env_path)
     try:
         cfg = WorkerConfig.from_env()
     except ValueError as exc:

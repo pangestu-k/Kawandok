@@ -19,12 +19,16 @@ A permission-aware internal company assistant, accessed by chat, that can locate
 Prerequisites: Go 1.22+, Node.js 20+, Python 3.10+, Docker.
 
 ```sh
-make up            # Postgres(pgvector):15432, Redis:16379, S3-compatible (SeaweedFS):19000
-make migrate       # apply infra/db/migrations ({{EMBEDDING_DIM}} defaults to API_EMBEDDING_DIM=1536)
-go run ./apps/api/cmd/api   # API on :18080 (proxy FE /api -> :18080)
-cd apps/worker && python -m worker.main   # ingestion worker (needs pip install of pinned deps)
-cd apps/web && npm install && npm run dev
+make up            # infra: Postgres(pgvector):15432, Redis:16379, S3 (SeaweedFS):19000
+make migrate       # apply infra/db/migrations
+go run ./apps/api/cmd/api   # API on :18080 — reads .env automatically
+cd apps/worker && python -m worker.main   # ingestion worker — reads .env automatically
+cd apps/web && npm install && npm run dev   # UI on :3000, proxy /api -> :18080
 ```
+
+`make` is for infrastructure and helper tasks only — the three apps run as
+plain processes. One-time setup: `cp infra/.env.example .env` (repo root);
+the API and worker auto-load that file (existing environment variables win).
 
 Verification (all offline, no cloud credentials required):
 

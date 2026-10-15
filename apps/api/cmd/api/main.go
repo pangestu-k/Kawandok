@@ -41,6 +41,13 @@ func main() {
 }
 
 func run() error {
+	if envPath, ok := config.FindDotEnv("."); ok {
+		if err := config.LoadDotEnv(envPath); err != nil {
+			return err
+		}
+		slog.Info("loaded environment file", "path", envPath)
+	}
+
 	cfg, err := config.Load(os.Getenv)
 	if err != nil {
 		return err

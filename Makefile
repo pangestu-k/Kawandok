@@ -19,7 +19,8 @@ help:
 	@echo "  secret-scan      gitleaks if installed, else pattern scan"
 
 dev: up
-	@echo "Infra running. Start apps in separate terminals:"
+	@echo "Infra running. One-time setup: cp infra/.env.example .env"
+	@echo "Start apps in separate terminals (they read .env automatically):"
 	@echo "  API:    go run ./apps/api/cmd/api"
 	@echo "  Worker: cd apps/worker && python -m worker.main"
 	@echo "  Web:    cd apps/web && npm run dev"

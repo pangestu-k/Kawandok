@@ -88,6 +88,9 @@ Use for new decisions made during implementation. Record date, decision, options
 - **Load test**: `make loadtest` (Go tool `cmd/loadtest`) — 200 req / c=10 against the authenticated read path reported 0 failures, p50 0.54 ms, p95 30 ms, and the rate limiter correctly throttled the remainder.
 - A Docker Desktop backend process on this machine was accidentally stopped during port probing (8080 was held by Docker) and was immediately restarted; all containers recovered healthy. Recorded for transparency.
 
+## Infrastructure coexistence decision (2026-10-14)
+- **PostgreSQL stays a dedicated, separate instance for this project**: container `pgvector/pgvector:pg16` on `127.0.0.1:15432`, named volume `infra_pgdata`. It does **not** share an instance, data directory, or volume with the `terasrumah-bsn-infra` stack (sharing a data directory between two Postgres containers is unsafe; sharing one instance was considered and rejected). Coexistence verified live: both stacks run simultaneously with disjoint host ports (15432/16379/19000 vs 5432/6379/8080/etc.), container names, networks, and volumes. Redis and SeaweedFS remain project-local as well.
+
 ## M5 authentication preparation (2026-10-14)
 - Learning/dev uses short-lived, server-issued HS256 JWTs. The signing key stays server-side; the browser requests a token only for an active seeded user via a dev-only endpoint. This is deliberately not a production login mechanism.
 - JWT `sub` maps to `users.external_subject` (seeded as `dev:<email>`). A future OIDC verifier will validate issuer/JWKS/audience and reuse this mapping, preserving existing application roles, departments, and ACLs.
