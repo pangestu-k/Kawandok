@@ -19,20 +19,25 @@ const (
 	StorageMemory = "memory"
 	StorageS3     = "s3"
 
-	DefaultPort               = "18080"
-	DefaultEmbeddingDim       = 1536
-	DefaultPresignTTLSeconds  = 60
-	DefaultMaxUploadBytes     = 26_214_400
-	DefaultRetrievalTopK      = 6
-	DefaultLLMBaseURL         = "https://api.openai.com/v1"
-	DefaultRateLimitPerMinute = 120
-	DefaultJWTIssuer          = "office-ai-dev"
-	DefaultJWTAudience        = "office-ai-api"
-	DefaultJWTTTLMinutes      = 60
-	maxEmbeddingDim           = 10000
-	maxPresignTTLSeconds      = 900
-	maxUploadBytes            = 104_857_600
-	maxRetrievalTopK          = 20
+	DefaultPort              = "18080"
+	DefaultEmbeddingDim      = 1536
+	DefaultPresignTTLSeconds = 60
+	DefaultMaxUploadBytes    = 26_214_400
+	DefaultRetrievalTopK     = 6
+	// DefaultRetrievalMaxDistance is deliberately stricter than the historical
+	// 0.95 gate: cosine distance <=> 0.72 means only genuinely related chunks
+	// become evidence, so greetings and small talk are answered as normal chat
+	// instead of being forced into evidence-only mode.
+	DefaultRetrievalMaxDistance = 0.72
+	DefaultLLMBaseURL           = "https://api.openai.com/v1"
+	DefaultRateLimitPerMinute   = 120
+	DefaultJWTIssuer            = "office-ai-dev"
+	DefaultJWTAudience          = "office-ai-api"
+	DefaultJWTTTLMinutes        = 60
+	maxEmbeddingDim             = 10000
+	maxPresignTTLSeconds        = 900
+	maxUploadBytes              = 104_857_600
+	maxRetrievalTopK            = 20
 )
 
 type Config struct {
@@ -61,6 +66,10 @@ type Config struct {
 	LLMModel      string
 	LLMAPIKey     string
 	RetrievalTopK int
+	// RetrievalMaxDistance is the cosine-distance gate for vector retrieval.
+	// Lower means stricter: only chunks that are actually similar to the
+	// question become evidence, so casual chat stays out of grounded mode.
+	RetrievalMaxDistance float64
 
 	RateLimitPerMinute int
 	MetricsEnabled     bool
@@ -159,6 +168,13 @@ func Load(getenv Getter) (Config, error) {
 		return Config{}, fmt.Errorf("API_RETRIEVAL_TOP_K: %w", err)
 	} else {
 		cfg.RetrievalTopK = parsed
+	}
+	if raw := strings.TrimSpace(getenv("API_RETRIEVAL_MAX_DISTANCE")); raw == "" {
+		cfg.RetrievalMaxDistance = DefaultRetrievalMaxDistance
+	} else if parsed, err := strconv.ParseFloat(raw, 64); err != nil {
+		return Config{}, fmt.Errorf("API_RETRIEVAL_MAX_DISTANCE: %w", err)
+	} else {
+		cfg.RetrievalMaxDistance = parsed
 	}
 	if raw := strings.TrimSpace(getenv("API_JWT_TTL_MINUTES")); raw == "" {
 		cfg.JWTTTLMinutes = DefaultJWTTTLMinutes
@@ -291,6 +307,9 @@ func (c Config) Validate() error {
 	}
 	if c.RetrievalTopK < 1 || c.RetrievalTopK > maxRetrievalTopK {
 		return fmt.Errorf("API_RETRIEVAL_TOP_K must be between 1 and %d, got %d", maxRetrievalTopK, c.RetrievalTopK)
+	}
+	if c.RetrievalMaxDistance <= 0 || c.RetrievalMaxDistance > 2 {
+		return fmt.Errorf("API_RETRIEVAL_MAX_DISTANCE must be greater than 0 and at most 2, got %v", c.RetrievalMaxDistance)
 	}
 	if c.RateLimitPerMinute < 0 || c.RateLimitPerMinute > 100000 {
 		return fmt.Errorf("API_RATE_LIMIT_RPM must be between 0 and 100000, got %d", c.RateLimitPerMinute)

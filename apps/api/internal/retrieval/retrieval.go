@@ -26,10 +26,21 @@ type Searcher struct {
 	db       *sql.DB
 	embedder embedding.Provider
 	topK     int
+	// maxDistance is the largest cosine distance a chunk may have and still be
+	// treated as evidence. A permissive gate makes every question look
+	// document-related, which forced the chat into grounded-only mode.
+	maxDistance float64
 }
 
-func NewSearcher(db *sql.DB, embedder embedding.Provider, topK int) *Searcher {
-	return &Searcher{db: db, embedder: embedder, topK: topK}
+// DefaultMaxDistance mirrors the historical 0.95 gate, kept permissive for
+// compatibility when callers do not configure one.
+const DefaultMaxDistance = 0.95
+
+func NewSearcher(db *sql.DB, embedder embedding.Provider, topK int, maxDistance float64) *Searcher {
+	if maxDistance <= 0 || maxDistance > 2 {
+		maxDistance = DefaultMaxDistance
+	}
+	return &Searcher{db: db, embedder: embedder, topK: topK, maxDistance: maxDistance}
 }
 
 type row struct {
@@ -78,8 +89,6 @@ func (s *Searcher) ftsCandidates(ctx context.Context, scope authz.Scope, query s
 	return s.rows(ctx, querySQL, args...)
 }
 
-const vectorDistanceGate = 0.95
-
 func (s *Searcher) vectorCandidates(ctx context.Context, scope authz.Scope, vector []float32) ([]row, error) {
 	args := []any{vectorLiteral(vector), s.topK}
 	where := scopeFilter(scope, &args)
@@ -88,7 +97,7 @@ func (s *Searcher) vectorCandidates(ctx context.Context, scope authz.Scope, vect
 		WHERE %s AND c.embedding <=> $1::vector < %v
 		ORDER BY c.embedding <=> $1::vector, c.id
 		LIMIT $2
-	`, selection, where, vectorDistanceGate)
+	`, selection, where, s.maxDistance)
 	return s.rows(ctx, querySQL, args...)
 }
 

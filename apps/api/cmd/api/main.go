@@ -123,7 +123,7 @@ func run() error {
 		finance.Register(mux, financeSvc)
 		identitySvc := identity.NewService(db, auditLog, log)
 		identity.Register(mux, &identity.Handlers{Svc: identitySvc, Log: log})
-		chatSvc := chat.NewService(chat.NewRepo(db), retrieval.NewSearcher(db, embedProvider, cfg.RetrievalTopK), llmProvider, chat.NewAuthorizer(checker), financeSvc, log)
+		chatSvc := chat.NewService(chat.NewRepo(db), retrieval.NewSearcher(db, embedProvider, cfg.RetrievalTopK, cfg.RetrievalMaxDistance), llmProvider, chat.NewAuthorizer(checker), financeSvc, log)
 		chat.Register(mux, &chat.Handlers{Svc: chatSvc})
 		jwtConfig := auth.JWTConfig{Issuer: cfg.JWTIssuer, Audience: cfg.JWTAudience, Key: []byte(cfg.JWTSigningKey), TTL: time.Duration(cfg.JWTTTLMinutes) * time.Minute}
 		auth.RegisterDevToken(mux, db, jwtConfig)

@@ -37,16 +37,16 @@ func TestLoad(t *testing.T) {
 			name: "dev defaults applied when env is empty",
 			env:  map[string]string{"API_JWT_SIGNING_KEY": "01234567890123456789012345678901"},
 			want: Config{
-				Env:                "dev",
-				Port:               "18080",
-				LLMProvider:        "mock",
-				EmbeddingProvider:  "mock",
-				EmbeddingDim:       1536,
-				StorageBackend:     "memory",
-				PresignTTLSeconds:  60,
-				MaxUploadBytes:     26214400,
-				DevSeed:            true,
-				RetrievalTopK:      6,
+				Env:               "dev",
+				Port:              "18080",
+				LLMProvider:       "mock",
+				EmbeddingProvider: "mock",
+				EmbeddingDim:      1536,
+				StorageBackend:    "memory",
+				PresignTTLSeconds: 60,
+				MaxUploadBytes:    26214400,
+				DevSeed:           true,
+				RetrievalTopK:     6, RetrievalMaxDistance: DefaultRetrievalMaxDistance,
 				RateLimitPerMinute: 120,
 				MetricsEnabled:     true,
 				JWTSigningKey:      "01234567890123456789012345678901",
@@ -59,21 +59,21 @@ func TestLoad(t *testing.T) {
 			name: "explicit production values are kept",
 			env:  fullValidEnv(),
 			want: Config{
-				Env:                "prod",
-				Port:               "9090",
-				DatabaseURL:        "postgres://localhost/db",
-				RedisAddr:          "127.0.0.1:6380",
-				LLMProvider:        "mock",
-				EmbeddingProvider:  "mock",
-				EmbeddingDim:       768,
-				StorageBackend:     "s3",
-				StorageBucket:      "docs",
-				S3Endpoint:         "https://acct.r2.cloudflarestorage.com",
-				R2AccessKeyID:      "key",
-				R2SecretAccessKey:  "secret",
-				PresignTTLSeconds:  60,
-				MaxUploadBytes:     1048576,
-				RetrievalTopK:      6,
+				Env:               "prod",
+				Port:              "9090",
+				DatabaseURL:       "postgres://localhost/db",
+				RedisAddr:         "127.0.0.1:6380",
+				LLMProvider:       "mock",
+				EmbeddingProvider: "mock",
+				EmbeddingDim:      768,
+				StorageBackend:    "s3",
+				StorageBucket:     "docs",
+				S3Endpoint:        "https://acct.r2.cloudflarestorage.com",
+				R2AccessKeyID:     "key",
+				R2SecretAccessKey: "secret",
+				PresignTTLSeconds: 60,
+				MaxUploadBytes:    1048576,
+				RetrievalTopK:     6, RetrievalMaxDistance: DefaultRetrievalMaxDistance,
 				RateLimitPerMinute: 120,
 				MetricsEnabled:     true,
 				JWTIssuer:          "office-ai-dev",
@@ -125,7 +125,7 @@ func TestLoad(t *testing.T) {
 				LLMProvider: "mock", EmbeddingProvider: "openai", EmbeddingDim: 768,
 				EmbeddingBaseURL: "https://provider.example/v1", EmbeddingModel: "test-model", EmbeddingAPIKey: "test-key",
 				StorageBackend: "s3", StorageBucket: "docs", S3Endpoint: "https://acct.r2.cloudflarestorage.com", R2AccessKeyID: "key", R2SecretAccessKey: "secret",
-				PresignTTLSeconds: 60, MaxUploadBytes: 1048576, RetrievalTopK: 6, RateLimitPerMinute: 120, MetricsEnabled: true,
+				PresignTTLSeconds: 60, MaxUploadBytes: 1048576, RetrievalTopK: 6, RetrievalMaxDistance: DefaultRetrievalMaxDistance, RateLimitPerMinute: 120, MetricsEnabled: true,
 				JWTIssuer: "office-ai-dev", JWTAudience: "office-ai-api", JWTSigningKey: "01234567890123456789012345678901", JWTTTLMinutes: 60,
 			}),
 		},
@@ -170,21 +170,21 @@ func TestLoad(t *testing.T) {
 				e["API_R2_ACCOUNT_ID"] = "acct42"
 			}),
 			want: withCfg(Config{
-				Env:                "prod",
-				Port:               "9090",
-				DatabaseURL:        "postgres://localhost/db",
-				RedisAddr:          "127.0.0.1:6380",
-				LLMProvider:        "mock",
-				EmbeddingProvider:  "mock",
-				EmbeddingDim:       768,
-				StorageBackend:     "s3",
-				StorageBucket:      "docs",
-				R2AccountID:        "acct42",
-				R2AccessKeyID:      "key",
-				R2SecretAccessKey:  "secret",
-				PresignTTLSeconds:  60,
-				MaxUploadBytes:     1048576,
-				RetrievalTopK:      6,
+				Env:               "prod",
+				Port:              "9090",
+				DatabaseURL:       "postgres://localhost/db",
+				RedisAddr:         "127.0.0.1:6380",
+				LLMProvider:       "mock",
+				EmbeddingProvider: "mock",
+				EmbeddingDim:      768,
+				StorageBackend:    "s3",
+				StorageBucket:     "docs",
+				R2AccountID:       "acct42",
+				R2AccessKeyID:     "key",
+				R2SecretAccessKey: "secret",
+				PresignTTLSeconds: 60,
+				MaxUploadBytes:    1048576,
+				RetrievalTopK:     6, RetrievalMaxDistance: DefaultRetrievalMaxDistance,
 				RateLimitPerMinute: 120,
 				MetricsEnabled:     true,
 				JWTIssuer:          "office-ai-dev",
@@ -309,5 +309,41 @@ func TestRobinEntriesFromProviderGroups(t *testing.T) {
 	explicit := Config{LLMRobin: "https://a/v1|key-a|model-a"}
 	if entries, err := explicit.RobinEntries(); err != nil || len(entries) != 1 || entries[0].Model != "model-a" {
 		t.Errorf("explicit chain = (%+v, %v)", entries, err)
+	}
+}
+
+func TestRetrievalMaxDistance(t *testing.T) {
+	cfg, err := Load(func(key string) string {
+		switch key {
+		case "API_ENV":
+			return "dev"
+		case "API_JWT_SIGNING_KEY":
+			return "0123456789012345678901234567890123"
+		case "API_RETRIEVAL_MAX_DISTANCE":
+			return "0.55"
+		}
+		return ""
+	})
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	if cfg.RetrievalMaxDistance != 0.55 {
+		t.Errorf("RetrievalMaxDistance = %v, want 0.55", cfg.RetrievalMaxDistance)
+	}
+	if got := DefaultRetrievalMaxDistance; got >= 0.95 {
+		t.Errorf("default gate %v is too permissive, casual chat would match any chunk", got)
+	}
+	if _, err := Load(func(key string) string {
+		switch key {
+		case "API_ENV":
+			return "dev"
+		case "API_JWT_SIGNING_KEY":
+			return "0123456789012345678901234567890123"
+		case "API_RETRIEVAL_MAX_DISTANCE":
+			return "5"
+		}
+		return ""
+	}); err == nil {
+		t.Error("out-of-range API_RETRIEVAL_MAX_DISTANCE must be rejected")
 	}
 }

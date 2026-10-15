@@ -205,10 +205,18 @@ func (s *Service) HandleMessage(ctx context.Context, p auth.Principal, sessionID
 		return err
 	}
 
-	evidence, err := s.retriever.Retrieve(ctx, authz.ScopeFor(p), text)
-	if err != nil {
-		s.log.Error("retrieval failed", "error", err)
-		return emitError(emit, "RETRIEVAL_FAILED", "document search failed")
+	var evidence []retrieval.Evidence
+	if isSmallTalk(text) {
+		// Sapaan/perkenalan tidak pernah menjadi pertanyaan dokumen: lewati
+		// retrieval supaya jawabannya obrolan biasa, bukan penolakan grounded.
+		s.log.Debug("small talk detected, skipping retrieval", "message_length", len(text))
+	} else {
+		found, err := s.retriever.Retrieve(ctx, authz.ScopeFor(p), text)
+		if err != nil {
+			s.log.Error("retrieval failed", "error", err)
+			return emitError(emit, "RETRIEVAL_FAILED", "document search failed")
+		}
+		evidence = found
 	}
 
 	prompt := buildPrompt(text, evidence)
@@ -409,6 +417,35 @@ var documentQuestionHints = []string{
 	"rekap", "rekapitulasi", "anggaran", "keuangan", "financial", "gaji", "payroll",
 	"absensi", "cuti", "izin", "karyawan", "pegawai", "klien", "pelanggan", "vendor",
 	"perjanjian", "sop", "slide", "presentasi", "excel", "spreadsheet", "csv", "pdf",
+}
+
+// smallTalkPatterns menandai sapaan, perkenalan, dan ucapan singkat yang jelas
+// bukan pertanyaan dokumen. Sapaan seperti ini dilewati retrieval sepenuhnya
+// supaya tidak pernah terjawab dengan "tidak menemukan berdasarkan evidence".
+var smallTalkPatterns = []string{
+	"halo", "hai", "hi", "hallo", "hey", "hei", "pagi", "siang", "sore", "malam",
+	"apa kabar", "gimana kabar", "how are you", "terima kasih", "makasih", "thanks",
+	"sampai jumpa", "dadah", "test", "tes", "ping", "pagi dok", "assalamualaikum",
+	"perkenalan", "nama saya", "saya rizky", "saya adalah",
+}
+
+// isSmallTalkVolume membatasinya: hanya apply bila pesan pendek.
+func isSmallTalkVolume(text string) bool {
+	words := strings.Fields(strings.ToLower(strings.TrimSpace(text)))
+	if len(words) == 0 || len(words) > 8 {
+		return false
+	}
+	for _, pattern := range smallTalkPatterns {
+		if strings.Contains(strings.ToLower(text), pattern) {
+			return true
+		}
+	}
+	return false
+}
+
+// isSmallTalk = sapaan pendek yang bukan pertanyaan dokumen.
+func isSmallTalk(text string) bool {
+	return isSmallTalkVolume(text) && !wantsDocumentAnswer(text)
 }
 
 // wantsDocumentAnswer menandai pertanyaan yang jelas meminta isi dokumen kantor.

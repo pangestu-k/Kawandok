@@ -88,6 +88,14 @@ Use for new decisions made during implementation. Record date, decision, options
 - **Load test**: `make loadtest` (Go tool `cmd/loadtest`) — 200 req / c=10 against the authenticated read path reported 0 failures, p50 0.54 ms, p95 30 ms, and the rate limiter correctly throttled the remainder.
 - A Docker Desktop backend process on this machine was accidentally stopped during port probing (8080 was held by Docker) and was immediately restarted; all containers recovered healthy. Recorded for transparency.
 
+## Gate relevansi retrieval + deteksi small talk (2026-10-15)
+- Gejala: setelah ada dokumen di Knowledge Base, sapaan seperti "halo saya rizky" / "hai" dijawab "Maaf, saya tidak dapat menemukan jawabannya berdasarkan evidence yang diberikan" — persisGrounded-mode.
+- Penyebab: `vectorCandidates` memakai gate jarak cosinus `0.95` (similarity ≥ 0.05). Itu hampir selalu true, jadi *setiap* pertanyaan mendapat evidence → `len(evidence) > 0` → prompt grounded. Mode general hanya aktif bila retrieval benar-benar kosong.
+- Perbaikan dua lapis:
+  1. Gate relevansi dikonfigurasi: `API_RETRIEVAL_MAX_DISTANCE` (default **0.72**, divalidasi 0 < v ≤ 2), diteruskan ke `retrieval.NewSearcher`. Chunk yang tidak mirip tidak lagi jadi evidence.
+  2. `isSmallTalk()` di `internal/chat/service.go`: pesan ≤ 8 kata yang mengandung pola sapaan/perkenalan/terima kasih/test dan bukan pertanyaan dokumen → **retrieval dilewati sepenuhnya**, jadi dijawab obrolan biasa.
+- Mengapa penting: gate longgar membuat dokumen tidak pernah gagal; verifikasi live setelah perbaikan: "halo saya rizky" → `grounded=false`, "terima kasih" → `grounded=false`, "apa isi dokumen yang sudah diunggah?" → `grounded=true` dengan 3 sitasi sah.
+
 ## Database test terpisah (2026-10-15)
 - Gejala: setelah `make test`, tabel `departments`/`users`/`roles` di database dev kosong sehingga dropdown "Departemen pemilik" di FE kosong dan tabel Knowledge Base ikut kosong.
 - Penyebab: `ACL_TEST_DATABASE_URL`/`WORKER_TEST_DATABASE_URL` menunjuk database **dev yang sama** (`office_ai`), dan test Go melakukan TRUNCATE. Dev seed baru terisi lagi saat API start berikutnya.

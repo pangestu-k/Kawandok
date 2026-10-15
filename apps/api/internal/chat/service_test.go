@@ -673,3 +673,59 @@ func TestGeneralPromptForbidsDisclaimers(t *testing.T) {
 		t.Error("general prompt must keep the honest refusal for document questions")
 	}
 }
+
+func TestSmallTalkSkipsRetrievalAndAnswersNormally(t *testing.T) {
+	for _, message := range []string{"halo saya rizky", "hai", "test", "apa kabar?", "terima kasih"} {
+		retriever := &countingRetriever{}
+		replyer := &recordingProvider{model: "m", reply: "Halo! Ada yang bisa dibantu?"}
+		svc := NewService(newFakeStore(), retriever, replyer, &fakeAuthorizer{}, nil, testLogger)
+		sessID, _ := svc.CreateSession(context.Background(), auth.Principal{ID: "u1"}, "")
+
+		var done map[string]any
+		if err := svc.HandleMessage(context.Background(), auth.Principal{ID: "u1"}, sessID, message,
+			"req-st-"+message, func(ev Event) error {
+				if ev.Type == "done" {
+					done = ev.Data.(map[string]any)
+				}
+				return nil
+			}); err != nil {
+			t.Fatalf("HandleMessage(%q) error: %v", message, err)
+		}
+		if retriever.calls != 0 {
+			t.Errorf("%q triggered %d retrieval calls, want 0", message, retriever.calls)
+		}
+		if done["grounded"] != false {
+			t.Errorf("%q grounded = %v, want false", message, done["grounded"])
+		}
+		if !strings.Contains(replyer.lastRequest.Messages[0].Content, "mengobrol biasa") {
+			t.Errorf("%q used the wrong prompt", message)
+		}
+	}
+}
+
+func TestDocumentQuestionStillRetrieves(t *testing.T) {
+	retriever := &countingRetriever{}
+	replyer := &recordingProvider{model: "m", reply: "Dokumen belum tersedia."}
+	svc := NewService(newFakeStore(), retriever, replyer, &fakeAuthorizer{}, nil, testLogger)
+	sessID, _ := svc.CreateSession(context.Background(), auth.Principal{ID: "u1"}, "")
+	if err := svc.HandleMessage(context.Background(), auth.Principal{ID: "u1"}, sessID,
+		"apa isi dokumen kebijakan cuti?", "req-doc-2", func(Event) error { return nil }); err != nil {
+		t.Fatalf("HandleMessage() error: %v", err)
+	}
+	if retriever.calls != 1 {
+		t.Errorf("retrieval calls = %d, want 1 for a document question", retriever.calls)
+	}
+	if isSmallTalk("halo apa isi memo cuti") {
+		t.Error("a document question must never be treated as small talk")
+	}
+	if !isSmallTalk("hai") || isSmallTalk("jelaskan algoritma sorting beserta contoh kode python yang lengkap") {
+		t.Error("isSmallTalk() misclassified the message")
+	}
+}
+
+type countingRetriever struct{ calls int }
+
+func (c *countingRetriever) Retrieve(_ context.Context, _ authz.Scope, _ string) ([]retrieval.Evidence, error) {
+	c.calls++
+	return nil, nil
+}
