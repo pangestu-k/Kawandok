@@ -162,7 +162,7 @@ export function ChatPanel() {
             citations: mergeCitation(prev.citations, citation),
           })),
         onError: (code, msg) => setError(`${code}: ${msg}`),
-        onDone: (citations) => {
+        onDone: (citations, _replayed, llm) => {
           setMessages((prev) => [
             ...prev,
             {
@@ -171,6 +171,7 @@ export function ChatPanel() {
               body: draftRef.current || "(tanpa jawaban)",
               citations,
               created_at: createdAt,
+              llm,
             },
           ]);
           setDraft({ text: "", citations: [] });
@@ -279,6 +280,17 @@ export function ChatPanel() {
                   <time>{formatTime(m.created_at)}</time>
                 </div>
                 <div className="bubble">{m.body}</div>
+                {m.llm ? (
+                  <div className="tiny muted" style={{ marginTop: 4 }}>
+                    {m.llm.model || m.llm.provider || "model tidak dilaporkan"}
+                    {m.llm.grounded ? " · berbasis dokumen" : " · jawaban umum"}
+                    {m.llm.inputTokens || m.llm.outputTokens
+                      ? ` · ${m.llm.inputTokens}→${m.llm.outputTokens} token${
+                          m.llm.usageSource === "estimated" ? " (estimasi)" : ""
+                        }`
+                      : ""}
+                  </div>
+                ) : null}
                 {m.citations && m.citations.length > 0 ? (
                   <div className="citations">
                     {m.citations.map((c) => (
@@ -355,8 +367,9 @@ export function ChatPanel() {
             />
           </div>
           <div className="tiny muted" style={{ marginTop: 7, textAlign: "center" }}>
-            Jawaban selalu dilengkapi sumber dokumen; angka keuangan dihitung dari
-            data tervalidasi.
+            Jawaban berbasis dokumen selalu disertai sumber; pertanyaan lain
+            dijawab sebagai obrolan umum dan diberi penanda. Angka keuangan
+            dihitung dari data tervalidasi.
           </div>
         </form>
       </section>

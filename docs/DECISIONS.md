@@ -88,6 +88,17 @@ Use for new decisions made during implementation. Record date, decision, options
 - **Load test**: `make loadtest` (Go tool `cmd/loadtest`) — 200 req / c=10 against the authenticated read path reported 0 failures, p50 0.54 ms, p95 30 ms, and the rate limiter correctly throttled the remainder.
 - A Docker Desktop backend process on this machine was accidentally stopped during port probing (8080 was held by Docker) and was immediately restarted; all containers recovered healthy. Recorded for transparency.
 
+## Dua mode jawaban: grounded vs general (2026-10-15)
+- **Masalah**: system prompt hanya boleh "Jawab HANYA berdasarkan EVIDENCE", sehingga obrolan biasa (`test`, `apa kabar?`, `apa itu X?`) selalu dijawab "tidak dapat menemukan jawaban" walau LLM aktif.
+- **Perbaikan**: tiga system prompt di `internal/chat/service.go`:
+  1. *grounded* — ada evidence: aturan lama (sitasi wajib, tanpa mengarang).
+  2. *general* — tidak ada evidence **dan** pertanyaan bukan tentang dokumen kantor: boleh menjawab pengetahuan umum/ngobrol dengan gaya percakapan natural, **tanpa disclaimer** ("ini jawaban umum", "sebagai AI", "berdasarkan pengetahuan saya" dilarang), tetapi mengarang isi dokumen/sitasi tetap dilarang.
+  3. *no-evidence document question* — tidak ada evidence tapi pertanyaan jelas meminta isi dokumen/memo/laporan/keuangan (`wantsDocumentAnswer`): tetap menolak dengan jujur, menawarkan langkah, tanpa mengarang.
+- Kontrak keamanan tetap: tidak ada SQL/SQL bebas dari LLM, sitasi divalidasi ulang terhadap ACL, dokumen tetap diperlakukan sebagai data.
+- **Observability**: event `done` kini membawa `grounded` + `llm: {provider, model, input_tokens, output_tokens, usage_source}` sehingga operator bisa memastikan model mana yang melayani. Log `chat answered` juga mencatat provider/model/grounded/citations/token.
+- `CompleteResponse.Model` diisi dari respons provider (streaming maupun non-streaming), jadi nama model bukan lagi asumsi konfigurasi.
+- **Token usage**: free tier Groq/Gemini tidak mengirim blok `usage` pada streaming. Bila kosong, sistem memakai estimasi kasar (~4 karakter/token) dan menandai `usage_source=estimated` — tidak pernah melaporkan 0 sebagai fakta.
+
 ## Real LLM + embedding integration (2026-10-15)
 - **Round-robin adalah metode, bukan model**: satu provider `robin` dengan rantai **10 model** (4 Groq + 6 Gemini free tier, disalin dari proyek `chat-ai-assistant`), diputar per-request + failover otomatis. Konfigurasi dalam bentuk token + daftar model per provider (`API_LLM_ROBIN_GROQ_*`, `API_LLM_ROBIN_GEMINI_*`) karena kunci tidak lagi inline di `.env`; grup provider di-*interleave* (`llm.InterleaveRobinEntries`) sehingga request berselang-seling antar provider, bukan habis satu provider dulu. Bentuk string tunggal `API_LLM_ROBIN=base_url|api_key|model;...` tetap didukung dan menang bila diisi. Grup yang hanya terisi sebagian ditolak agar tidak diam-diam berjalan di model lebih sedikit dari yang dibaca.
 - **Audit rotasi**: tiap percobaan dilog (`round-robin model served request` / `... failed, falling back` dengan host + model, tanpa API key).

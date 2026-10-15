@@ -63,6 +63,9 @@ func (r CompleteRequest) Validate() error {
 }
 
 type CompleteResponse struct {
+	// Model is the model that actually served the request. Providers that
+	// round-robin report the serving entry, not the whole chain.
+	Model        string
 	Message      Message
 	ToolCalls    []ToolCall
 	Usage        Usage

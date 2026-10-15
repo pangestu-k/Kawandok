@@ -18,6 +18,7 @@ export type ChatMessage = {
   body: string;
   citations?: Citation[];
   created_at: string;
+  llm?: AnswerLlmInfo;
 };
 
 export type DocumentRow = {
@@ -315,12 +316,21 @@ export async function downloadDocument(documentId: string, filename: string): Pr
   URL.revokeObjectURL(url);
 }
 
+export interface AnswerLlmInfo {
+  grounded: boolean;
+  provider: string;
+  model: string;
+  inputTokens: number;
+  outputTokens: number;
+  usageSource: string;
+}
+
 export interface StreamHandlers {
   onDelta: (text: string) => void;
   onCitation: (citation: Citation) => void;
   onStatus: (stage: string) => void;
   onError: (code: string, message: string) => void;
-  onDone: (citations: Citation[], replayed: boolean) => void;
+  onDone: (citations: Citation[], replayed: boolean, llm: AnswerLlmInfo) => void;
 }
 
 export async function streamChatMessage(
@@ -376,7 +386,18 @@ export async function streamChatMessage(
         handlers.onError(String(data.code ?? "UNKNOWN"), String(data.message ?? ""));
         break;
       case "done":
-        handlers.onDone((data.citations as Citation[]) ?? [], Boolean(data.replayed));
+        handlers.onDone(
+          (data.citations as Citation[]) ?? [],
+          Boolean(data.replayed),
+          {
+            grounded: Boolean(data.grounded),
+            provider: String((data.llm as Record<string, unknown>)?.llm_provider ?? ""),
+            model: String((data.llm as Record<string, unknown>)?.llm_model ?? ""),
+            inputTokens: Number((data.llm as Record<string, unknown>)?.input_tokens ?? 0),
+            outputTokens: Number((data.llm as Record<string, unknown>)?.output_tokens ?? 0),
+            usageSource: String((data.llm as Record<string, unknown>)?.usage_source ?? ""),
+          }
+        );
         break;
     }
   };

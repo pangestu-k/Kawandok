@@ -1,11 +1,13 @@
-﻿# Office AI Assistant â€” AI Agent Build Pack
+# Office AI Assistant AI Agent Build Pack
 
 Status: **M5 implemented — all milestones delivered** (frontend with full API integration: login/chat/admin; dev-JWT auth; rate limiting; metrics; CI; digest-pinned images; rehearsed backup/restore; load test; deployment + security review docs). NOT production-ready by policy: company decisions (OIDC, R2/DPA, retention, LLM agreement) remain open — see docs/SECURITY-REVIEW.md. This repository documentation remains the source of truth, not evidence that later features exist.
 
 ## Product in one sentence
+
 A permission-aware internal company assistant, accessed by chat, that can locate and return original office files, answer questions grounded in their contents, and compute reliable financial results from structured data.
 
 ## Default technical decisions
+
 - **Monorepo** with `apps/web` (Next.js/TypeScript), `apps/api` (Go), and `apps/worker` (Python).
 - **LLM and embedding providers** are mock by default and OpenAI-compatible when configured. Never embed provider keys in the web client.
 - **PostgreSQL + pgvector** for relational records, document chunks, and embeddings; PostgreSQL full-text search + vector retrieval.
@@ -139,6 +141,7 @@ If your editor reports `cannot find package ... in GOROOT or GOPATH`, the toolin
 The CLI is unaffected: `go build ./...` / `go test ./...` inside `apps/api` and from the repository root (via `go.work`) both pass.
 
 ## Read these files, in order
+
 1. `AGENTS.md` â€” rules for coding agents
 2. `docs/01-PRD.md` â€” scope and acceptance criteria
 3. `docs/02-ARCHITECTURE.md` â€” boundaries and flows
@@ -150,9 +153,11 @@ The CLI is unaffected: `go build ./...` / `go test ./...` inside `apps/api` and 
 9. `prompts/START-HERE.md` â€” prompt to give the implementing agent
 
 ## Working assumptions to confirm before launch
+
 Single company initially, separate departments and users; admin uploads files; PDF/DOCX/XLSX; Indonesian first; synthetic demo files only until company security and data policies are approved. Scope and integration choices are configurable; **do not invent a production IAM or data retention policy**.
 
 ## Non-goals for MVP
+
 - Training/fine-tuning an LLM
 - Google Drive/SharePoint sync
 - General autonomous write actions against enterprise systems

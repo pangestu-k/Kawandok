@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 	"sync"
@@ -277,7 +278,7 @@ func TestGoldenPermissionBypass(t *testing.T) {
 }
 
 func TestGoldenFullWidthCitationsExtracted(t *testing.T) {
-	invalid := failingProvider{reply: "Jawaban dengan sitasi format CJK 【1】."}
+	invalid := failingProvider{reply: "Jawaban dengan sitasi format CJK \u30101\u3011."}
 	store := newFakeStore()
 	svc := NewService(store, &fakeRetriever{evidence: []retrieval.Evidence{
 		{CitationRef: "1", ChunkID: "chunk-1", DocumentID: "doc-1", VersionID: "ver-1",
@@ -351,6 +352,30 @@ func TestGoldenInjectionIsDataNotInstruction(t *testing.T) {
 			}
 		}
 	}
+}
+
+type recordingProvider struct {
+	reply       string
+	model       string
+	lastRequest llm.CompleteRequest
+}
+
+func (r *recordingProvider) Name() string { return "recording" }
+
+func (r *recordingProvider) Complete(_ context.Context, req llm.CompleteRequest) (llm.CompleteResponse, error) {
+	r.lastRequest = req
+	return llm.CompleteResponse{
+		Model:   r.model,
+		Message: llm.Message{Role: llm.RoleAssistant, Content: r.reply},
+		Usage:   llm.Usage{InputTokens: 11, OutputTokens: 7},
+	}, nil
+}
+
+func (r *recordingProvider) Stream(ctx context.Context, req llm.CompleteRequest, fn llm.StreamFunc) (llm.CompleteResponse, error) {
+	if err := fn(r.reply); err != nil {
+		return llm.CompleteResponse{}, err
+	}
+	return r.Complete(ctx, req)
 }
 
 type failingProvider struct{ reply string }
@@ -501,3 +526,150 @@ func TestBuildPromptFramesEvidenceAsData(t *testing.T) {
 }
 
 func intPtr(v int) *int { return &v }
+
+func TestGeneralChatWithoutEvidenceIsAnswered(t *testing.T) {
+	store := newFakeStore()
+	replyer := &recordingProvider{model: "gemini-test", reply: "Halo! Saya asisten kantor, siap membantu."}
+	svc := NewService(store, &fakeRetriever{}, replyer, &fakeAuthorizer{}, nil, testLogger)
+
+	sessID, _ := svc.CreateSession(context.Background(), auth.Principal{ID: "u1"}, "")
+	var done map[string]any
+	var sb strings.Builder
+	err := svc.HandleMessage(context.Background(), auth.Principal{ID: "u1"}, sessID, "test, apa kabar?", "req-general", func(ev Event) error {
+		switch ev.Type {
+		case "text_delta":
+			fmt.Fprintf(&sb, "%v", ev.Data)
+		case "done":
+			done = ev.Data.(map[string]any)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("HandleMessage() error: %v", err)
+	}
+	if !strings.Contains(sb.String(), "Halo") {
+		t.Errorf("streamed text = %q, want the model answer to reach the client", sb.String())
+	}
+	if done["grounded"] != false {
+		t.Errorf("grounded = %v, want false for general chat", done["grounded"])
+	}
+	llmInfo, _ := done["llm"].(map[string]any)
+	if llmInfo == nil || llmInfo["llm_model"] == "" {
+		t.Errorf("done.llm = %+v, want provider and model reported", done["llm"])
+	}
+	if llmInfo["usage_source"] != "provider" {
+		t.Errorf("usage_source = %v, want provider when the response carries usage", llmInfo["usage_source"])
+	}
+	prompt := replyer.lastRequest.Messages[0].Content
+	if !strings.Contains(prompt, "mengobrol biasa") {
+		t.Errorf("system prompt = %q, want the general-chat prompt", prompt)
+	}
+	if strings.Contains(prompt, "Jawab HANYA berdasarkan EVIDENCE") {
+		t.Errorf("system prompt = %q, must not force evidence-only answers for casual chat", prompt)
+	}
+}
+
+func TestDocumentQuestionWithoutEvidenceStaysGrounded(t *testing.T) {
+	store := newFakeStore()
+	replyer := &recordingProvider{model: "gemini-test", reply: "Dokumen laporan keuangan tersebut belum tersedia di sistem."}
+	svc := NewService(store, &fakeRetriever{}, replyer, &fakeAuthorizer{}, nil, testLogger)
+
+	sessID, _ := svc.CreateSession(context.Background(), auth.Principal{ID: "u1"}, "")
+	if err := svc.HandleMessage(context.Background(), auth.Principal{ID: "u1"}, sessID,
+		"apa isi dokumen laporan keuangan kita?", "req-doc", func(Event) error { return nil }); err != nil {
+		t.Fatalf("HandleMessage() error: %v", err)
+	}
+	prompt := replyer.lastRequest.Messages[0].Content
+	if !strings.Contains(prompt, "tidak boleh menjawab dari pengetahuan umum") {
+		t.Errorf("system prompt = %q, want the no-evidence document prompt", prompt)
+	}
+}
+
+func TestGroundedPromptKeepsEvidenceRules(t *testing.T) {
+	msgs := buildPrompt("apa isi memo?", []retrieval.Evidence{{ChunkID: "c1", Title: "Memo", Content: "Isi memo"}})
+	if len(msgs) != 2 || !strings.Contains(msgs[0].Content, "Jawab HANYA berdasarkan EVIDENCE") {
+		t.Fatalf("grounded prompt = %+v", msgs)
+	}
+	if !strings.Contains(msgs[1].Content, "[EVIDENCE 1") {
+		t.Errorf("user prompt = %q, want numbered evidence block", msgs[1].Content)
+	}
+	if !wantsDocumentAnswer("isi memo terbaru") || wantsDocumentAnswer("apa kabar?") {
+		t.Error("wantsDocumentAnswer() misclassified the question")
+	}
+}
+
+func TestUsageEstimatedWhenProviderOmitsIt(t *testing.T) {
+	store := newFakeStore()
+	replyer := &recordingProvider{model: "groq-model", reply: "Halo"}
+	svc := NewService(store, &fakeRetriever{}, replyer, &fakeAuthorizer{}, nil, testLogger)
+
+	sessID, _ := svc.CreateSession(context.Background(), auth.Principal{ID: "u1"}, "")
+	var done map[string]any
+	err := svc.HandleMessage(context.Background(), auth.Principal{ID: "u1"}, sessID, "halo", "req-usage", func(ev Event) error {
+		if ev.Type == "done" {
+			done = ev.Data.(map[string]any)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("HandleMessage() error: %v", err)
+	}
+	llmInfo := done["llm"].(map[string]any)
+	if llmInfo["usage_source"] != "provider" || llmInfo["input_tokens"].(int) != 11 {
+		t.Errorf("llm info = %+v, want provider-reported usage", llmInfo)
+	}
+
+	zero := &zeroUsageProvider{reply: "Halo tanpa usage"}
+	svc2 := NewService(newFakeStore(), &fakeRetriever{}, zero, &fakeAuthorizer{}, nil, testLogger)
+	sessID2, _ := svc2.CreateSession(context.Background(), auth.Principal{ID: "u1"}, "")
+	var done2 map[string]any
+	if err := svc2.HandleMessage(context.Background(), auth.Principal{ID: "u1"}, sessID2, "halo", "req-usage-2", func(ev Event) error {
+		if ev.Type == "done" {
+			done2 = ev.Data.(map[string]any)
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("HandleMessage() error: %v", err)
+	}
+	info2 := done2["llm"].(map[string]any)
+	if info2["usage_source"] != "estimated" {
+		t.Errorf("usage_source = %v, want estimated when the provider omits usage", info2["usage_source"])
+	}
+	if info2["output_tokens"].(int) <= 0 {
+		t.Errorf("output_tokens = %v, want a positive estimate", info2["output_tokens"])
+	}
+}
+
+type zeroUsageProvider struct{ reply string }
+
+func (z zeroUsageProvider) Name() string { return "zero-usage" }
+
+func (z zeroUsageProvider) Complete(_ context.Context, _ llm.CompleteRequest) (llm.CompleteResponse, error) {
+	return llm.CompleteResponse{Message: llm.Message{Role: llm.RoleAssistant, Content: z.reply}}, nil
+}
+
+func (z zeroUsageProvider) Stream(ctx context.Context, req llm.CompleteRequest, fn llm.StreamFunc) (llm.CompleteResponse, error) {
+	if err := fn(z.reply); err != nil {
+		return llm.CompleteResponse{}, err
+	}
+	return z.Complete(ctx, req)
+}
+
+func TestGeneralPromptForbidsDisclaimers(t *testing.T) {
+	msgs := buildPrompt("apa kabar?", nil)
+	system := msgs[0].Content
+	if !strings.Contains(system, "tanpa disclaimer") && !strings.Contains(system, "Jangan tambahkan disclaimer") {
+		t.Errorf("general prompt must forbid disclaimers, got: %s", system)
+	}
+	for _, banned := range []string{"Tegaskan secara singkat bila jawaban Anda bukan dari dokumen"} {
+		if strings.Contains(system, banned) {
+			t.Errorf("general prompt still requires the disclaimer %q", banned)
+		}
+	}
+	if !strings.Contains(system, "Dilarang mengarang isi dokumen") {
+		t.Error("general prompt must keep the no-fabrication rule")
+	}
+	if !strings.Contains(system, "belum tersedia di sistem") {
+		t.Error("general prompt must keep the honest refusal for document questions")
+	}
+}

@@ -59,6 +59,7 @@ type openaiRequest struct {
 }
 
 type openaiResponse struct {
+	Model   string `json:"model"`
 	Choices []struct {
 		Message openaiMessage `json:"message"`
 	} `json:"choices"`
@@ -68,6 +69,7 @@ type openaiResponse struct {
 }
 
 type openaiStreamChunk struct {
+	Model   string `json:"model"`
 	Choices []struct {
 		Delta struct {
 			Content string `json:"content"`
@@ -140,6 +142,7 @@ func (o *OpenAI) Complete(ctx context.Context, req CompleteRequest) (CompleteRes
 	}
 	choice := parsed.Choices[0]
 	return CompleteResponse{
+		Model:        parsed.Model,
 		Message:      Message{Role: RoleAssistant, Content: choice.Message.Content},
 		FinishReason: "stop",
 	}, nil
@@ -162,6 +165,7 @@ func (o *OpenAI) Stream(ctx context.Context, req CompleteRequest, fn StreamFunc)
 	defer body.Close()
 
 	var content strings.Builder
+	servedModel := o.model
 	scanner := bufio.NewScanner(body)
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for scanner.Scan() {
@@ -183,6 +187,9 @@ func (o *OpenAI) Stream(ctx context.Context, req CompleteRequest, fn StreamFunc)
 		if err := json.Unmarshal([]byte(payload), &chunk); err != nil {
 			return CompleteResponse{}, fmt.Errorf("openai stream decode: %w", err)
 		}
+		if chunk.Model != "" {
+			servedModel = chunk.Model
+		}
 		for _, choice := range chunk.Choices {
 			if choice.Delta.Content != "" {
 				content.WriteString(choice.Delta.Content)
@@ -196,6 +203,7 @@ func (o *OpenAI) Stream(ctx context.Context, req CompleteRequest, fn StreamFunc)
 		return CompleteResponse{}, fmt.Errorf("openai stream read: %w", err)
 	}
 	return CompleteResponse{
+		Model:        servedModel,
 		Message:      Message{Role: RoleAssistant, Content: content.String()},
 		FinishReason: "stop",
 	}, nil
