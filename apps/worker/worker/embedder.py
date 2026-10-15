@@ -68,7 +68,7 @@ class OpenAIEmbedder:
             raise ValueError("no texts provided")
         request = urllib.request.Request(
             self._base_url + "/embeddings",
-            data=json.dumps({"model": self._model, "input": texts}).encode("utf-8"),
+            data=json.dumps({"model": self._model, "input": texts, "dimensions": self._dim}).encode("utf-8"),
             headers={"Authorization": "Bearer " + self._api_key, "Content-Type": "application/json"},
             method="POST",
         )
@@ -81,11 +81,14 @@ class OpenAIEmbedder:
         if not isinstance(rows, list) or len(rows) != len(texts):
             raise RuntimeError("embedding provider returned an invalid vector count")
         vectors: list[list[float] | None] = [None] * len(texts)
-        for row in rows:
-            if not isinstance(row, dict) or not isinstance(row.get("index"), int):
+        for position, row in enumerate(rows):
+            if not isinstance(row, dict) or not isinstance(row.get("embedding"), list):
                 raise RuntimeError("embedding provider returned an invalid vector")
-            index, vector = row["index"], row.get("embedding")
-            if index < 0 or index >= len(vectors) or vectors[index] is not None or not isinstance(vector, list):
+            index = row.get("index")
+            if not isinstance(index, int):
+                index = position
+            vector = row["embedding"]
+            if index < 0 or index >= len(vectors) or vectors[index] is not None or len(vector) != self._dim or any(not isinstance(value, (int, float)) for value in vector):
                 raise RuntimeError("embedding provider returned an invalid vector")
             if len(vector) != self._dim or any(not isinstance(value, (int, float)) for value in vector):
                 raise RuntimeError("embedding provider returned an invalid vector dimension")

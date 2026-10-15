@@ -276,6 +276,30 @@ func TestGoldenPermissionBypass(t *testing.T) {
 	}
 }
 
+func TestGoldenFullWidthCitationsExtracted(t *testing.T) {
+	invalid := failingProvider{reply: "Jawaban dengan sitasi format CJK 【1】."}
+	store := newFakeStore()
+	svc := NewService(store, &fakeRetriever{evidence: []retrieval.Evidence{
+		{CitationRef: "1", ChunkID: "chunk-1", DocumentID: "doc-1", VersionID: "ver-1",
+			Title: "Dok", Content: "Fakta sah."},
+	}}, invalid, &fakeAuthorizer{readable: map[string]bool{"doc-1": true}}, nil, testLogger)
+
+	sessID, _ := svc.CreateSession(context.Background(), auth.Principal{ID: "u1"}, "")
+	var done map[string]any
+	err := svc.HandleMessage(context.Background(), auth.Principal{ID: "u1"}, sessID, "tanya", "req-cjk", func(ev Event) error {
+		if ev.Type == "done" {
+			done = ev.Data.(map[string]any)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("HandleMessage() error: %v", err)
+	}
+	citations := done["citations"].([]Citation)
+	if len(citations) != 1 || citations[0].Ref != "1" {
+		t.Errorf("citations = %+v, want ref 1 (full-width brackets)", citations)
+	}
+}
 func TestGoldenInvalidCitationDropped(t *testing.T) {
 	invalid := failingProvider{reply: "Jawaban palsu [9] dan [1]."}
 	store := newFakeStore()

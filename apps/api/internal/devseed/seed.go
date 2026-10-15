@@ -8,6 +8,7 @@ import (
 
 func Run(ctx context.Context, db *sql.DB) error {
 	statements := []string{
+		`UPDATE users SET external_subject = NULL WHERE external_subject LIKE 'dev:%'`,
 		`INSERT INTO departments (name) VALUES ('General'), ('Finance'), ('HR'), ('IT')
 		 ON CONFLICT (name) DO NOTHING`,
 		`INSERT INTO roles (name) VALUES ('admin'), ('employee'), ('finance')

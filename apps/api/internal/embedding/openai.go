@@ -45,7 +45,7 @@ func (o *OpenAI) Embed(ctx context.Context, texts []string) ([][]float32, error)
 	if len(texts) == 0 {
 		return nil, fmt.Errorf("embedding: no texts provided")
 	}
-	body, err := json.Marshal(map[string]any{"model": o.model, "input": texts})
+	body, err := json.Marshal(map[string]any{"model": o.model, "input": texts, "dimensions": o.dim})
 	if err != nil {
 		return nil, fmt.Errorf("embedding: marshal request: %w", err)
 	}
@@ -69,7 +69,7 @@ func (o *OpenAI) Embed(ctx context.Context, texts []string) ([][]float32, error)
 	}
 	var payload struct {
 		Data []struct {
-			Index     int       `json:"index"`
+			Index     *int      `json:"index"`
 			Embedding []float32 `json:"embedding"`
 		} `json:"data"`
 	}
@@ -80,11 +80,15 @@ func (o *OpenAI) Embed(ctx context.Context, texts []string) ([][]float32, error)
 		return nil, fmt.Errorf("embedding: provider returned %d vectors for %d texts", len(payload.Data), len(texts))
 	}
 	vectors := make([][]float32, len(texts))
-	for _, item := range payload.Data {
-		if item.Index < 0 || item.Index >= len(vectors) || vectors[item.Index] != nil || len(item.Embedding) != o.dim {
+	for position, item := range payload.Data {
+		index := position
+		if item.Index != nil {
+			index = *item.Index
+		}
+		if index < 0 || index >= len(vectors) || vectors[index] != nil || len(item.Embedding) != o.dim {
 			return nil, fmt.Errorf("embedding: invalid provider response")
 		}
-		vectors[item.Index] = item.Embedding
+		vectors[index] = item.Embedding
 	}
 	return vectors, nil
 }

@@ -8,7 +8,8 @@ import {
   Tooltip,
   Typography,
 } from "antd";
-import { PaperClipOutlined, SendOutlined, UserOutlined } from "@ant-design/icons";
+import { PaperClipOutlined, PlusOutlined, SendOutlined, UserOutlined } from "@ant-design/icons";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
@@ -20,6 +21,7 @@ import {
   fetchMessages,
   getSessionId,
   isLoggedIn,
+  listSessions,
   newRequestId,
   setSessionId,
   streamChatMessage,
@@ -42,6 +44,7 @@ function describe(err: unknown): string {
 
 export function ChatPanel() {
   const { message: toast } = App.useApp();
+  const queryClient = useQueryClient();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [draft, setDraft] = useState<Draft>({ text: "", citations: [] });
   const [input, setInput] = useState("");
@@ -52,23 +55,36 @@ export function ChatPanel() {
   const [activeSession, setActiveSession] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const draftRef = useRef("");
+  const formRef = useRef<HTMLFormElement>(null);
 
   draftRef.current = draft.text;
 
-  const loadHistory = useCallback(async (sessionId: string) => {
-    try {
-      const history = await fetchMessages(sessionId);
-      setMessages(history);
-    } catch (err: unknown) {
-      if (err instanceof ApiError && err.status === 404) {
-        clearSessionId();
-        setActiveSession(null);
-        setMessages([]);
-      } else {
-        setError(describe(err));
+  const sessionsQuery = useQuery({
+    queryKey: ["chat-sessions"],
+    queryFn: listSessions,
+  });
+
+  const refreshSessions = useCallback(() => {
+    void queryClient.invalidateQueries({ queryKey: ["chat-sessions"] });
+  }, [queryClient]);
+
+  const loadHistory = useCallback(
+    async (sessionId: string) => {
+      try {
+        const history = await fetchMessages(sessionId);
+        setMessages(history);
+      } catch (err: unknown) {
+        if (err instanceof ApiError && err.status === 404) {
+          clearSessionId();
+          setActiveSession(null);
+          setMessages([]);
+        } else {
+          setError(describe(err));
+        }
       }
-    }
-  }, []);
+    },
+    []
+  );
 
   useEffect(() => {
     if (!isLoggedIn()) {
@@ -102,6 +118,7 @@ export function ChatPanel() {
     setMessages([]);
     setDraft({ text: "", citations: [] });
     setError("");
+    formRef.current?.querySelector("textarea")?.focus();
   };
 
   const send = async (raw?: string) => {
@@ -116,16 +133,17 @@ export function ChatPanel() {
         sessionId = await createSession();
         setSessionId(sessionId);
         setActiveSession(sessionId);
+        refreshSessions();
       }
     } catch (err) {
       setError(describe(err));
       return;
     }
 
-    const now = new Date().toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+    const createdAt = new Date().toISOString();
     setMessages((prev) => [
       ...prev,
-      { id: `local-${Date.now()}`, role: "user", body: text, created_at: now },
+      { id: `local-${Date.now()}`, role: "user", body: text, created_at: createdAt },
     ]);
     setStreaming(true);
     setDraft({ text: "", citations: [] });
@@ -134,7 +152,10 @@ export function ChatPanel() {
     try {
       await streamChatMessage(sessionId, text, newRequestId(), {
         onStatus: (stage) => setStatusStage(stage),
-        onDelta: (delta) => setDraft((prev) => ({ ...prev, text: prev.text + delta })),
+        onDelta: (delta) => {
+          draftRef.current += delta;
+          setDraft((prev) => ({ ...prev, text: prev.text + delta }));
+        },
         onCitation: (citation) =>
           setDraft((prev) => ({
             ...prev,
@@ -149,14 +170,14 @@ export function ChatPanel() {
               role: "assistant",
               body: draftRef.current || "(tanpa jawaban)",
               citations,
-              created_at: now,
+              created_at: createdAt,
             },
           ]);
           setDraft({ text: "", citations: [] });
           setStatusStage("");
         },
       });
-      window.dispatchEvent(new Event("office-ai:sessions-changed"));
+      refreshSessions();
     } catch (err) {
       setError(describe(err));
     } finally {
@@ -177,6 +198,11 @@ export function ChatPanel() {
     );
   }
 
+  const sessions = sessionsQuery.data ?? [];
+  const activeTitle =
+    (activeSession && sessions.find((s) => s.session_id === activeSession)?.title) ||
+    (activeSession ? "Percakapan aktif" : "Chat Baru");
+
   return (
     <div className="chat-layout with-sessions">
       <SessionSidebar
@@ -192,18 +218,22 @@ export function ChatPanel() {
             </Avatar>
             <div>
               <Typography.Title level={4} style={{ margin: 0 }}>
-                {activeSession ? "Percakapan aktif" : "Chat Baru"}
+                {activeTitle}
               </Typography.Title>
               <Text type="secondary" style={{ fontSize: 12 }}>
                 Diskusi dengan AI Assistant · jawaban dilengkapi sitasi dokumen
               </Text>
             </div>
           </div>
-          {activeSession ? (
-            <Button onClick={startNewSession} type="primary" ghost>
-              Percakapan baru
-            </Button>
-          ) : null}
+          <Tooltip title="Percakapan baru">
+            <Button
+              type="text"
+              aria-label="Percakapan baru"
+              icon={<PlusOutlined style={{ fontSize: 18 }} />}
+              onClick={startNewSession}
+              style={{ border: "1px solid #dce4ed" }}
+            />
+          </Tooltip>
         </div>
 
         <div className="chat-scroll" ref={scrollRef}>
@@ -291,10 +321,12 @@ export function ChatPanel() {
         {error ? <p className="error pad">{error}</p> : null}
 
         <form
+          ref={formRef}
           className="chat-compose"
           onSubmit={(e) => {
             e.preventDefault();
-            void send();
+            void send(input);
+            formRef.current?.querySelector("textarea")?.focus();
           }}
         >
           <div className="composer">
@@ -308,16 +340,16 @@ export function ChatPanel() {
               placeholder="Ketik pertanyaan Anda… (Enter untuk kirim)"
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && !e.shiftKey) {
+                if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
                   e.preventDefault();
-                  void send();
+                  formRef.current?.requestSubmit();
                 }
               }}
             />
             <Button
               type="primary"
+              htmlType="submit"
               icon={<SendOutlined />}
-              onClick={() => void send()}
               loading={streaming}
               disabled={!input.trim()}
             />

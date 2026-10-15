@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"office-ai-agent/apps/api/internal/llm"
 )
 
 const (
@@ -12,6 +14,7 @@ const (
 
 	ProviderMock   = "mock"
 	ProviderOpenAI = "openai"
+	ProviderRobin  = "robin"
 
 	StorageMemory = "memory"
 	StorageS3     = "s3"
@@ -61,6 +64,13 @@ type Config struct {
 
 	RateLimitPerMinute int
 	MetricsEnabled     bool
+	LLMRobin           string
+	RobinGroqBaseURL   string
+	RobinGroqAPIKey    string
+	RobinGroqModels    string
+	RobinGeminiBaseURL string
+	RobinGeminiAPIKey  string
+	RobinGeminiModels  string
 	JWTIssuer          string
 	JWTAudience        string
 	JWTSigningKey      string
@@ -88,12 +98,19 @@ func Load(getenv Getter) (Config, error) {
 		R2AccessKeyID:     strings.TrimSpace(getenv("API_R2_ACCESS_KEY_ID")),
 		R2SecretAccessKey: strings.TrimSpace(getenv("API_R2_SECRET_ACCESS_KEY")),
 
-		LLMBaseURL:    strings.TrimSpace(getenv("API_LLM_BASE_URL")),
-		LLMModel:      strings.TrimSpace(getenv("API_LLM_MODEL")),
-		LLMAPIKey:     strings.TrimSpace(getenv("API_LLM_API_KEY")),
-		JWTIssuer:     strings.TrimSpace(getenv("API_JWT_ISSUER")),
-		JWTAudience:   strings.TrimSpace(getenv("API_JWT_AUDIENCE")),
-		JWTSigningKey: strings.TrimSpace(getenv("API_JWT_SIGNING_KEY")),
+		LLMBaseURL:         strings.TrimSpace(getenv("API_LLM_BASE_URL")),
+		LLMModel:           strings.TrimSpace(getenv("API_LLM_MODEL")),
+		LLMAPIKey:          strings.TrimSpace(getenv("API_LLM_API_KEY")),
+		LLMRobin:           strings.TrimSpace(getenv("API_LLM_ROBIN")),
+		RobinGroqBaseURL:   strings.TrimSpace(getenv("API_LLM_ROBIN_GROQ_BASE_URL")),
+		RobinGroqAPIKey:    strings.TrimSpace(getenv("API_LLM_ROBIN_GROQ_API_KEY")),
+		RobinGroqModels:    strings.TrimSpace(getenv("API_LLM_ROBIN_GROQ_MODELS")),
+		RobinGeminiBaseURL: strings.TrimSpace(getenv("API_LLM_ROBIN_GEMINI_BASE_URL")),
+		RobinGeminiAPIKey:  strings.TrimSpace(getenv("API_LLM_ROBIN_GEMINI_API_KEY")),
+		RobinGeminiModels:  strings.TrimSpace(getenv("API_LLM_ROBIN_GEMINI_MODELS")),
+		JWTIssuer:          strings.TrimSpace(getenv("API_JWT_ISSUER")),
+		JWTAudience:        strings.TrimSpace(getenv("API_JWT_AUDIENCE")),
+		JWTSigningKey:      strings.TrimSpace(getenv("API_JWT_SIGNING_KEY")),
 	}
 
 	if raw := strings.TrimSpace(getenv("API_RATE_LIMIT_RPM")); raw != "" {
@@ -226,8 +243,13 @@ func (c Config) Validate() error {
 		if c.LLMModel == "" {
 			return fmt.Errorf("API_LLM_MODEL is required when API_LLM_PROVIDER is %q", ProviderOpenAI)
 		}
+	case ProviderRobin:
+		entries, robinErr := c.RobinEntries()
+		if robinErr != nil || len(entries) == 0 {
+			return fmt.Errorf("configure robin LLM with API_LLM_ROBIN (base_url|api_key|model separated by ';') or with API_LLM_ROBIN_GROQ_*/API_LLM_ROBIN_GEMINI_* (base URL, API key, comma separated models) when API_LLM_PROVIDER is %q", ProviderRobin)
+		}
 	default:
-		return fmt.Errorf("API_LLM_PROVIDER %q is not available; supported: %q, %q", c.LLMProvider, ProviderMock, ProviderOpenAI)
+		return fmt.Errorf("API_LLM_PROVIDER %q is not available; supported: mock, openai, robin", c.LLMProvider)
 	}
 	switch c.EmbeddingProvider {
 	case ProviderMock:
@@ -283,6 +305,40 @@ func (c Config) Validate() error {
 		return fmt.Errorf("API_JWT_TTL_MINUTES must be between 1 and 1440, got %d", c.JWTTTLMinutes)
 	}
 	return nil
+}
+
+// RobinEntries resolves the round-robin chain. An explicit API_LLM_ROBIN string
+// wins; otherwise entries are built from the per-provider variables and
+// interleaved so requests alternate between providers. Partially configured
+// provider variables are an error to avoid silently running on fewer models.
+func (c Config) RobinEntries() ([]llm.RobinEntry, error) {
+	if c.LLMRobin != "" {
+		return llm.ParseRobinEndpoints(c.LLMRobin)
+	}
+	groups := [][]llm.RobinEntry{
+		llm.BuildRobinGroup(c.RobinGroqBaseURL, c.RobinGroqAPIKey, c.RobinGroqModels),
+		llm.BuildRobinGroup(c.RobinGeminiBaseURL, c.RobinGeminiAPIKey, c.RobinGeminiModels),
+	}
+	configured := 0
+	for _, group := range groups {
+		if len(group) > 0 {
+			configured++
+		}
+	}
+	if configured == 0 {
+		return nil, nil
+	}
+	if configured != len(groups) {
+		return nil, fmt.Errorf("both API_LLM_ROBIN_GROQ_* and API_LLM_ROBIN_GEMINI_* must be set together when using provider groups")
+	}
+	for _, group := range groups {
+		for _, entry := range group {
+			if entry.BaseURL == "" || entry.APIKey == "" || entry.Model == "" {
+				return nil, fmt.Errorf("robin provider group needs base URL, API key, and at least one model")
+			}
+		}
+	}
+	return llm.InterleaveRobinEntries(groups...), nil
 }
 
 func (c Config) R2Endpoint() string {

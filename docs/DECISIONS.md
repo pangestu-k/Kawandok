@@ -88,6 +88,15 @@ Use for new decisions made during implementation. Record date, decision, options
 - **Load test**: `make loadtest` (Go tool `cmd/loadtest`) — 200 req / c=10 against the authenticated read path reported 0 failures, p50 0.54 ms, p95 30 ms, and the rate limiter correctly throttled the remainder.
 - A Docker Desktop backend process on this machine was accidentally stopped during port probing (8080 was held by Docker) and was immediately restarted; all containers recovered healthy. Recorded for transparency.
 
+## Real LLM + embedding integration (2026-10-15)
+- **Round-robin adalah metode, bukan model**: satu provider `robin` dengan rantai **10 model** (4 Groq + 6 Gemini free tier, disalin dari proyek `chat-ai-assistant`), diputar per-request + failover otomatis. Konfigurasi dalam bentuk token + daftar model per provider (`API_LLM_ROBIN_GROQ_*`, `API_LLM_ROBIN_GEMINI_*`) karena kunci tidak lagi inline di `.env`; grup provider di-*interleave* (`llm.InterleaveRobinEntries`) sehingga request berselang-seling antar provider, bukan habis satu provider dulu. Bentuk string tunggal `API_LLM_ROBIN=base_url|api_key|model;...` tetap didukung dan menang bila diisi. Grup yang hanya terisi sebagian ditolak agar tidak diam-diam berjalan di model lebih sedikit dari yang dibaca.
+- **Audit rotasi**: tiap percobaan dilog (`round-robin model served request` / `... failed, falling back` dengan host + model, tanpa API key).
+- **Live proof rotasi** (10 model aktif): `openai/gpt-oss-120b → gemini-3.7-flash → openai/gpt-oss-20b → gemini-3.6-flash → qwen/qwen3.8-27b` untuk lima request berturut-turut.
+- **Embedding asli via Gemini OpenAI-compat** (`gemini-embedding-001`, `dimensions: 1536`, base `https://generativelanguage.googleapis.com/v1beta/openai`): dipakai API (query) dan worker (chunk). Dua perbaikan klien embedding: kirim `dimensions`, dan terima respons tanpa field `index` (Gemini menghilangkannya — fallback ke urutan posisi).
+- **Router finance diperketat**: intent finance hanya bila ada tanggal eksplisit; keyword "keuangan/revenue" tanpa tanggal kini jatuh ke jalur dokumen (sebelumnya membajak pertanyaan dokumen menjadi help-text).
+- **Sitasi full-width** (`【1】` gaya CJK dari model) kini diekstraksi selain `[1]`.
+- Live proof: ingestion worker dengan embedding Gemini asli → chunk 1536-dim `ready`; chat RAG dengan LLM asli menjawab isi dokumen + sitasi; chat tanpa dokumen menjawab uncertainty (kontrak grounding terjaga).
+
 ## Chat session management (2026-10-15)
 - **Session CRUD ala ChatGPT** ditambahkan: `GET /v1/chat/sessions` (milik pemanggil, urut aktivitas terbaru, dengan jumlah pesan), `PATCH /v1/chat/sessions/{id}` (ganti judul), `DELETE /v1/chat/sessions/{id}` (menghapus sesi + seluruh pesan via cascade). Semua endpoint memakai pola kepemilikan yang sama: milik orang lain = 404 seragam (anti-enumerasi).
 - **Judul otomatis**: pesan pertama di sesi tanpa judul mengisi title (dipotong 48 karakter) lewat `EnsureTitle` — user tetap bisa mengganti manual.

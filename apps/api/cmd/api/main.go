@@ -114,7 +114,7 @@ func run() error {
 			return err
 		}
 
-		llmProvider, err := buildLLMProvider(cfg)
+		llmProvider, err := buildLLMProvider(cfg, log)
 		if err != nil {
 			return err
 		}
@@ -151,7 +151,7 @@ func run() error {
 	return serve(ctx, httpServer, log, cfg)
 }
 
-func buildLLMProvider(cfg config.Config) (llm.Provider, error) {
+func buildLLMProvider(cfg config.Config, log *slog.Logger) (llm.Provider, error) {
 	switch cfg.LLMProvider {
 	case config.ProviderOpenAI:
 		return llm.NewOpenAI(llm.OpenAIConfig{
@@ -159,6 +159,20 @@ func buildLLMProvider(cfg config.Config) (llm.Provider, error) {
 			APIKey:  cfg.LLMAPIKey,
 			Model:   cfg.LLMModel,
 		})
+	case config.ProviderRobin:
+		entries, err := cfg.RobinEntries()
+		if err != nil {
+			return nil, err
+		}
+		log.Info("round-robin LLM enabled", "models", len(entries))
+		return llm.NewRobin(llm.RobinConfig{Entries: entries, Timeout: 45 * time.Second, Logf: func(entry llm.RobinEntry, err error) {
+			attrs := []any{"provider_host", entry.BaseURL, "model", entry.Model}
+			if err != nil {
+				log.Warn("round-robin model failed, falling back", append(attrs, "error", err)...)
+				return
+			}
+			log.Info("round-robin model served request", attrs...)
+		}})
 	default:
 		return llm.NewGroundedMock(), nil
 	}

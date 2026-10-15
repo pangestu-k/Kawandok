@@ -18,7 +18,7 @@ func TestOpenAIEmbed(t *testing.T) {
 			t.Fatalf("unexpected request %s %q", r.URL.Path, r.Header.Get("Authorization"))
 		}
 		body, _ := io.ReadAll(r.Body)
-		if string(body) != `{"input":["one","two"],"model":"test-model"}` && string(body) != `{"model":"test-model","input":["one","two"]}` {
+		if string(body) != `{"dimensions":2,"input":["one","two"],"model":"test-model"}` && string(body) != `{"input":["one","two"],"model":"test-model","dimensions":2}` && string(body) != `{"model":"test-model","input":["one","two"],"dimensions":2}` {
 			t.Fatalf("unexpected body: %s", body)
 		}
 		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(bytes.NewBufferString(`{"data":[{"index":1,"embedding":[3,4]},{"index":0,"embedding":[1,2]}]}`)), Header: make(http.Header)}, nil

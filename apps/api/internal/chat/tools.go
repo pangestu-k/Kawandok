@@ -57,6 +57,10 @@ func detectFinanceIntent(message string) *financeIntent {
 		return nil
 	}
 
+	if len(datePattern.FindAllString(message, -1)) == 0 {
+		return nil
+	}
+
 	intent := &financeIntent{kind: "help", dept: detectDepartment(message)}
 	dates := datePattern.FindAllString(message, -1)
 	parsed := make([]time.Time, 0, len(dates))

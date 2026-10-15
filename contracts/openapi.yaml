@@ -238,6 +238,29 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
   /v1/chat/sessions:
+    get:
+      summary: Daftar sesi chat milik pemanggil (terbaru dulu)
+      operationId: listChatSessions
+      responses:
+        "200":
+          description: Ringkasan sesi: judul (diisi otomatis dari pesan pertama), jumlah pesan, waktu
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sessions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        session_id: { type: string, format: uuid }
+                        title: { type: string }
+                        created_at: { type: string, format: date-time }
+                        updated_at: { type: string, format: date-time }
+                        messages: { type: integer }
+        "401":
+          $ref: "#/components/responses/Unauthorized"
     post:
       summary: Create a chat session owned by the caller
       operationId: createChatSession
@@ -340,31 +363,7 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFoundUniform"
-  /chat/sessions:
-    get:
-      summary: Daftar sesi chat milik pemanggil (terbaru dulu)
-      operationId: listChatSessions
-      responses:
-        "200":
-          description: Ringkasan sesi: judul (diisi otomatis dari pesan pertama), jumlah pesan, waktu
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  sessions:
-                    type: array
-                    items:
-                      type: object
-                      properties:
-                        session_id: { type: string, format: uuid }
-                        title: { type: string }
-                        created_at: { type: string, format: date-time }
-                        updated_at: { type: string, format: date-time }
-                        messages: { type: integer }
-        "401":
-          $ref: "#/components/responses/Unauthorized"
-  /chat/sessions/{id}:
+  /v1/chat/sessions/{id}:
     patch:
       summary: Ganti judul sesi (pemilik saja)
       operationId: renameChatSession
@@ -404,7 +403,7 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "404":
           $ref: "#/components/responses/NotFoundUniform"
-  /me:
+  /v1/me:
     get:
       summary: Profil pengguna yang sedang masuk
       operationId: getMe
@@ -424,7 +423,7 @@ paths:
                   is_admin: { type: boolean }
         "401":
           $ref: "#/components/responses/Unauthorized"
-  /users:
+  /v1/users:
     get:
       summary: Daftar pengguna (khusus admin; ter-audit)
       operationId: listUsers
@@ -451,7 +450,7 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           description: Bukan admin
-  /roles:
+  /v1/roles:
     get:
       summary: Daftar role beserta jumlah pengguna (khusus admin)
       operationId: listRoles
@@ -460,14 +459,7 @@ paths:
           description: Daftar role
         "403":
           description: Bukan admin
-  /departments:
-    get:
-      summary: Daftar departemen beserta jumlah anggota
-      operationId: listDepartments
-      responses:
-        "200":
-          description: Daftar departemen
-  /finance/summary:
+  /v1/finance/summary:
     get:
       summary: |
         Agregat read-only transaksi keuangan tervalidasi; cakupan departemen
@@ -484,7 +476,7 @@ paths:
           description: FINANCE_FORBIDDEN (di luar cakupan departemen)
         "409":
           description: CONFLICTING_CURRENCIES
-  /finance/compare:
+  /v1/finance/compare:
     get:
       summary: Bandingkan dua periode (read-only, ter-audit, ter-cakup)
       operationId: financeCompare
@@ -625,7 +617,8 @@ components:
         page_size: { type: integer }
     Department:
       type: object
-      required: [id, name]
+      required: [id, name, user_count]
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
+        user_count: { type: integer }

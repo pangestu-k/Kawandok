@@ -57,9 +57,9 @@ func TestDetectFinanceIntent(t *testing.T) {
 			wantDept: "all",
 		},
 		{
-			name:     "keyword without dates asks for help",
-			message:  "Berapa total pendapatan kita?",
-			wantKind: "help",
+			name:    "keyword without dates falls through to document chat",
+			message: "Berapa total pendapatan kita?",
+			wantNil: true,
 		},
 	}
 
@@ -181,7 +181,7 @@ func TestFinanceCompareThroughChat(t *testing.T) {
 	}
 }
 
-func TestFinanceHelpWithoutDates(t *testing.T) {
+func TestFinanceKeywordWithoutDatesGoesToDocumentChat(t *testing.T) {
 	store := newFakeStore()
 	tools := &recordingFinance{}
 	svc := NewService(store, &fakeRetriever{}, llm.NewGroundedMock(),
@@ -189,14 +189,10 @@ func TestFinanceHelpWithoutDates(t *testing.T) {
 
 	p := auth.Principal{ID: "u-finance", Roles: []string{"finance"}}
 	sessID, _ := svc.CreateSession(context.Background(), p, "")
-	out := collectEvents(t, svc, p, sessID, "Berapa total pendapatan kita?", "req-fin-4")
+	collectEvents(t, svc, p, sessID, "Berapa total pendapatan kita?", "req-fin-4")
 
 	if tools.summaryCalled || tools.compareCalled {
 		t.Error("no tool may run without explicit dates")
-	}
-	reply := strings.Join(out.textDeltas, "")
-	if !strings.Contains(reply, "YYYY-MM-DD") {
-		t.Errorf("help reply must explain the date format, got %q", reply)
 	}
 }
 

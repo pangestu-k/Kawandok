@@ -1,9 +1,9 @@
-"use client";
+﻿"use client";
 
 import {
   App,
-  Avatar,
   Button,
+  Form,
   Input,
   Modal,
   Popconfirm,
@@ -17,7 +17,7 @@ import {
   PlusOutlined,
 } from "@ant-design/icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 import {
   ApiError,
@@ -44,24 +44,14 @@ export function SessionSidebar({
   const { message: toast } = App.useApp();
   const queryClient = useQueryClient();
   const [renaming, setRenaming] = useState<{ id: string; title: string } | null>(null);
-  const [renameTitle, setRenameTitle] = useState("");
 
   const sessionsQuery = useQuery({
     queryKey: ["chat-sessions"],
     queryFn: listSessions,
   });
 
-  useEffect(() => {
-    const onChangeSession = () => {
-      void queryClient.invalidateQueries({ queryKey: ["chat-sessions"] });
-    };
-    window.addEventListener("office-ai:sessions-changed", onChangeSession);
-    return () => window.removeEventListener("office-ai:sessions-changed", onChangeSession);
-  }, [queryClient]);
-
   const invalidate = () => {
     void queryClient.invalidateQueries({ queryKey: ["chat-sessions"] });
-    window.dispatchEvent(new Event("office-ai:sessions-changed"));
   };
 
   const createMutation = useMutation({
@@ -118,7 +108,7 @@ export function SessionSidebar({
       <div className="session-list">
         {sessionsQuery.isLoading ? (
           <Text type="secondary" style={{ fontSize: 12 }}>
-            memuat…
+            memuatâ€¦
           </Text>
         ) : null}
         {!sessionsQuery.isLoading && sessions.length === 0 ? (
@@ -151,7 +141,6 @@ export function SessionSidebar({
                     icon={<EditOutlined />}
                     onClick={() => {
                       setRenaming({ id: s.session_id, title: s.title || "" });
-                      setRenameTitle(s.title || "");
                     }}
                   />
                 </Tooltip>
@@ -175,20 +164,28 @@ export function SessionSidebar({
         title="Ganti judul percakapan"
         okText="Simpan"
         cancelText="Batal"
+        confirmLoading={renameMutation.isPending}
+        okButtonProps={{ htmlType: "submit", form: "rename-session-form" }}
         onCancel={() => setRenaming(null)}
-        onOk={() => {
-          if (renaming && renameTitle.trim()) {
-            renameMutation.mutate({ id: renaming.id, title: renameTitle.trim() });
-          }
-        }}
         destroyOnClose
       >
-        <Input
-          value={renameTitle}
-          onChange={(e) => setRenameTitle(e.target.value)}
-          maxLength={200}
-          placeholder="Judul percakapan"
-        />
+        <Form
+          id="rename-session-form"
+          layout="vertical"
+          initialValues={{ title: renaming?.title ?? "" }}
+          onFinish={(values) => {
+            if (renaming && values.title?.trim()) {
+              renameMutation.mutate({ id: renaming.id, title: values.title.trim() });
+            }
+          }}
+        >
+          <Form.Item
+            name="title"
+            rules={[{ required: true, message: "Judul wajib diisi" }, { max: 200, message: "Maksimal 200 karakter" }]}
+          >
+            <Input maxLength={200} placeholder="Judul percakapan" autoFocus />
+          </Form.Item>
+        </Form>
       </Modal>
     </aside>
   );

@@ -274,3 +274,40 @@ func with(base map[string]string, mutate func(map[string]string)) map[string]str
 func withCfg(c Config) Config {
 	return c
 }
+
+func TestRobinEntriesFromProviderGroups(t *testing.T) {
+	cfg := Config{
+		RobinGroqBaseURL:   "https://groq/v1",
+		RobinGroqAPIKey:    "key-groq",
+		RobinGroqModels:    "m1,m2",
+		RobinGeminiBaseURL: "https://gemini/v1",
+		RobinGeminiAPIKey:  "key-gemini",
+		RobinGeminiModels:  "g1,g2",
+	}
+	entries, err := cfg.RobinEntries()
+	if err != nil {
+		t.Fatalf("RobinEntries() error: %v", err)
+	}
+	want := []string{"m1", "g1", "m2", "g2"}
+	if len(entries) != len(want) {
+		t.Fatalf("entries = %+v", entries)
+	}
+	for i, model := range want {
+		if entries[i].Model != model {
+			t.Errorf("entries[%d].Model = %q, want %q", i, entries[i].Model, model)
+		}
+	}
+
+	partial := Config{RobinGroqAPIKey: "k", RobinGroqModels: "m1"}
+	if _, err := partial.RobinEntries(); err == nil {
+		t.Error("half-configured provider group must be rejected")
+	}
+	if entries, err := (Config{}).RobinEntries(); err != nil || entries != nil {
+		t.Errorf("empty config = (%v, %v), want (nil, nil)", entries, err)
+	}
+
+	explicit := Config{LLMRobin: "https://a/v1|key-a|model-a"}
+	if entries, err := explicit.RobinEntries(); err != nil || len(entries) != 1 || entries[0].Model != "model-a" {
+		t.Errorf("explicit chain = (%+v, %v)", entries, err)
+	}
+}

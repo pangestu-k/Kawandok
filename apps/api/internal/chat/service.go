@@ -279,7 +279,7 @@ func truncateTitle(text string) string {
 	return text
 }
 
-var citationPattern = regexp.MustCompile(`\[(\d{1,2})\]`)
+var citationPattern = regexp.MustCompile(`[[【](\d{1,2})[\]】]`)
 
 func (s *Service) validateCitations(ctx context.Context, userID, reply string, evidence []retrieval.Evidence) []Citation {
 	matches := citationPattern.FindAllStringSubmatch(reply, -1)

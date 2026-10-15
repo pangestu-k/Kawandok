@@ -159,3 +159,24 @@ Single company initially, separate departments and users; admin uploads files; P
 - Free-form arbitrary SQL execution by an LLM
 - Payroll / financial transactions posted into accounting systems
 - Guaranteeing correct OCR of every scanned or malformed file
+
+## Round-robin LLM (multi-model failover)
+
+`API_LLM_PROVIDER=robin` rotates across several OpenAI-compatible models **per
+request** and falls over to the next entry when one fails. Configure a token and
+model list per provider:
+
+```
+API_LLM_ROBIN_GROQ_BASE_URL=https://api.groq.com/openai/v1
+API_LLM_ROBIN_GROQ_API_KEY=...
+API_LLM_ROBIN_GROQ_MODELS=openai/gpt-oss-120b,openai/gpt-oss-20b
+API_LLM_ROBIN_GEMINI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai
+API_LLM_ROBIN_GEMINI_API_KEY=...
+API_LLM_ROBIN_GEMINI_MODELS=gemini-2.5-flash,gemini-2.5-flash-lite
+```
+
+Provider groups are interleaved, so consecutive requests alternate between
+providers instead of draining one provider first. The single-string form
+`API_LLM_ROBIN=base_url|api_key|model;...` is still supported and takes
+precedence. Each attempt is logged with the serving model
+(`round-robin model served request`), and failures are logged before failover.
