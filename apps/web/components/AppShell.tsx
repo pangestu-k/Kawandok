@@ -20,6 +20,7 @@ import {
   TeamOutlined,
   WalletOutlined,
 } from "@ant-design/icons";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
@@ -101,27 +102,20 @@ export function AppShell({ children }: { children: ReactNode }) {
               justifyContent: collapsed ? "center" : "flex-start",
             }}
           >
-            <span
-              style={{
-                display: "grid",
-                placeItems: "center",
-                width: 38,
-                height: 38,
-                borderRadius: 10,
-                background: "#173650",
-                color: "#fff",
-                fontWeight: 800,
-                flexShrink: 0,
-              }}
-            >
-              K
-            </span>
+            <Image
+              src="/kawandok-mark.png"
+              alt="Kawandok"
+              width={38}
+              height={38}
+              priority
+              style={{ width: 38, height: 38, objectFit: "contain", flexShrink: 0 }}
+            />
             {!collapsed ? (
               <div>
                 <div style={{ color: "#fff", fontWeight: 700, fontSize: 12 }}>
-                  KantorHub
+                  Kawandok
                 </div>
-                <div style={{ color: "#afc0d2", fontSize: 11 }}>Workspace</div>
+                <div style={{ color: "#afc0d2", fontSize: 11 }}>Knowledge Workspace</div>
               </div>
             ) : null}
           </div>

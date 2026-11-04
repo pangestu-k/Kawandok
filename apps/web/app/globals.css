@@ -118,6 +118,21 @@ p {
   font-weight: 800;
 }
 
+.brand-logo {
+  object-fit: contain;
+  object-position: left center;
+}
+
+.brand-logo-login {
+  width: 172px;
+  height: 42px;
+}
+
+.brand-logo-card {
+  width: 42px;
+  height: 42px;
+}
+
 .login-art h1 {
   font-size: clamp(32px, 3.5vw, 53px);
   line-height: 1.2;

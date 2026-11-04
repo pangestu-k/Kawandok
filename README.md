@@ -1,187 +1,326 @@
-# Office AI Assistant AI Agent Build Pack
+<p align="center">
+  <img src="apps/web/public/kawandok-wordmark.png" alt="Kawandok" width="420" />
+</p>
 
-Status: **M5 implemented — all milestones delivered** (frontend with full API integration: login/chat/admin; dev-JWT auth; rate limiting; metrics; CI; digest-pinned images; rehearsed backup/restore; load test; deployment + security review docs). NOT production-ready by policy: company decisions (OIDC, R2/DPA, retention, LLM agreement) remain open — see docs/SECURITY-REVIEW.md. This repository documentation remains the source of truth, not evidence that later features exist.
+<p align="center">
+  <strong>Workspace pengetahuan berbasis dokumen yang aman, dapat ditelusuri, dan siap dikembangkan.</strong>
+</p>
 
-## Product in one sentence
+<p align="center">
+  <a href="#mulai-cepat">Mulai cepat</a> ·
+  <a href="#konfigurasi-model-ai">Model AI</a> ·
+  <a href="#arsitektur">Arsitektur</a> ·
+  <a href="#keamanan-dan-batasan">Keamanan</a>
+</p>
 
-A permission-aware internal company assistant, accessed by chat, that can locate and return original office files, answer questions grounded in their contents, and compute reliable financial results from structured data.
+> Status: siap untuk pengembangan lokal dan evaluasi. **Belum siap produksi.**
+> OIDC, kebijakan retensi, persetujuan penyedia AI, dan lisensi open-source
+> masih perlu diputuskan sebelum publikasi atau penggunaan data nyata.
 
-## Default technical decisions
+## Tentang Kawandok
 
-- **Monorepo** with `apps/web` (Next.js/TypeScript), `apps/api` (Go), and `apps/worker` (Python).
-- **LLM and embedding providers** are mock by default and OpenAI-compatible when configured. Never embed provider keys in the web client.
-- **PostgreSQL + pgvector** for relational records, document chunks, and embeddings; PostgreSQL full-text search + vector retrieval.
-- **SeaweedFS** provides local S3-compatible object storage; Cloudflare R2 is the intended private object store for a later production deployment.
-- **Redis-based background jobs** to run ingestion asynchronously.
-- **Docker Compose** runs local infrastructure only; API, worker, and web run as normal development processes.
-- **Modular monolith**, not microservices proliferation; the document worker is a separate process.
+Kawandok adalah workspace pengetahuan internal untuk mengunggah dokumen,
+mengelola hak akses, mencari isi dokumen, dan melakukan tanya jawab berbasis
+sumber. Setiap akses dokumen dan bukti jawaban diperiksa di server. Data XLSX
+keuangan diproses melalui perhitungan SQL tervalidasi—bukan dihitung oleh LLM.
 
-## Local development quickstart
+Fitur utama:
 
-### Prerequisites
+- Unggah PDF, DOCX, dan XLSX dengan klasifikasi, departemen, serta ACL
+  *deny-by-default*.
+- Retrieval hybrid: pencarian teks PostgreSQL dan pencarian semantik vector.
+- Chat streaming dengan sitasi dokumen, halaman, atau bagian sumber.
+- Impor XLSX finansial dengan validasi format dan agregasi terparameterisasi.
+- Provider LLM dan embedding yang dapat diganti: `mock`, satu endpoint
+  OpenAI-compatible, atau beberapa endpoint dalam mode round-robin + failover.
+- Infrastruktur lokal berbasis Docker Compose: PostgreSQL + pgvector, Redis,
+  dan SeaweedFS (S3-compatible).
+
+## Arsitektur
+
+```mermaid
+flowchart LR
+    U[Pengguna] --> W[Web Next.js]
+    W --> A[API Go]
+    A --> DB[(PostgreSQL + pgvector)]
+    A --> S3[(SeaweedFS / S3)]
+    A --> Q[Redis Streams]
+    Q --> WK[Worker Python]
+    WK --> S3
+    WK --> DB
+    A --> L[LLM / Embedding Provider]
+```
+
+## Alur dokumen dan jawaban
+
+```mermaid
+sequenceDiagram
+    participant Admin as Admin
+    participant API as API
+    participant Store as Object Storage
+    participant Worker as Worker
+    participant DB as PostgreSQL
+    participant User as Pengguna
+
+    Admin->>API: Unggah PDF/DOCX/XLSX + ACL
+    API->>Store: Simpan objek dengan kunci UUID
+    API->>DB: Simpan metadata dan job ingest
+    API->>Worker: Kirim job melalui Redis
+    Worker->>Store: Ambil dokumen
+    Worker->>Worker: Scan opsional, parse, chunk, embedding
+    Worker->>DB: Simpan chunk/vector atau transaksi finansial
+    User->>API: Ajukan pertanyaan
+    API->>DB: Periksa ACL dan cari bukti relevan
+    API->>User: Jawaban + sitasi sumber
+```
+
+## Prasyarat
 
 - Docker Desktop
-- Go 1.22+
-- Python 3.10+
-- Node.js 20+ and npm
-- GNU Make plus a POSIX shell (Git Bash or WSL) when using the `make` commands
+- Go 1.22 atau lebih baru
+- Python 3.10 atau lebih baru
+- Node.js 20 dan npm
+- Git
+- Opsional: GNU Make + Git Bash/WSL. Pengguna PowerShell dapat menjalankan
+  perintah Docker/Go/Python/npm langsung.
 
-### One-time setup
+## Mulai cepat
 
-Run from the repository root:
+### 1. Clone dan siapkan konfigurasi
 
 ```sh
+git clone <URL_REPOSITORY_ANDA> kawandok
+cd kawandok
 cp infra/.env.example .env
+```
 
-cd apps/worker && python -m venv .venv && . .venv/bin/activate && python -m pip install -e ".[dev]"
-cd ../web && npm ci
+Pada Windows PowerShell:
+
+```powershell
+Copy-Item infra\.env.example .env
+```
+
+File `.env` sudah memakai provider `mock` sehingga tidak membutuhkan akun AI,
+Cloudflare R2, atau API key untuk menjalankan simulasi pertama. Jangan commit
+file `.env`.
+
+### 2. Instal dependency aplikasi
+
+macOS/Linux/Git Bash:
+
+```sh
+cd apps/worker
+python -m venv .venv
+. .venv/bin/activate
+python -m pip install -e ".[dev]"
+
+cd ../web
+npm ci
 cd ../..
 ```
 
-On Windows PowerShell, create the `.env` file with `Copy-Item infra\.env.example .env`.
-To create and install the worker environment, use
-`py -m venv apps\worker\.venv` then
-` .\apps\worker\.venv\Scripts\python.exe -m pip install -e ".\apps\worker[dev]"`.
+Windows PowerShell:
 
-The API and worker find the nearest `.env` automatically. Existing process
-environment variables take precedence, so do not commit `.env` or put real
-credentials in it.
+```powershell
+py -m venv apps\worker\.venv
+.\apps\worker\.venv\Scripts\python.exe -m pip install -e ".\apps\worker[dev]"
+npm --prefix apps\web ci
+```
 
-### Start the project
+### 3. Jalankan infrastruktur Docker dan migrasi
 
-Start local infrastructure and apply migrations:
+Dengan Make:
 
 ```sh
 make up
 make migrate
 ```
 
-Run these commands in three separate terminals:
-
-```sh
-make run-go       # API: http://127.0.0.1:18080
-make run-worker   # ingestion worker
-make run-web      # web: http://127.0.0.1:3000
-```
-
-The equivalent commands without Make are:
+Tanpa Make:
 
 ```sh
 docker compose -f infra/docker-compose.yml up -d
 go -C apps/api run ./cmd/migrate -dir ../../infra/db/migrations -database "postgres://migrator:dev_migrator_password@127.0.0.1:15432/office_ai?sslmode=disable" up
+```
+
+Docker Compose hanya menjalankan infrastruktur lokal:
+
+| Layanan | Port host | Fungsi |
+|---|---:|---|
+| PostgreSQL + pgvector | `15432` | metadata, ACL, chunk, vector, transaksi |
+| Redis | `16379` | antrian ingestion |
+| SeaweedFS S3 | `19000` | objek dokumen lokal |
+
+Port non-standar tersebut memungkinkan Kawandok berjalan bersamaan dengan
+project lain yang memakai PostgreSQL `5432` atau Redis `6379`.
+
+### 4. Jalankan tiga aplikasi
+
+Jalankan masing-masing pada terminal berbeda:
+
+```sh
+make run-go       # API: http://127.0.0.1:18080
+make run-worker   # worker ingestion
+make run-web      # web: http://127.0.0.1:3000
+```
+
+Atau tanpa Make:
+
+```sh
 go run ./apps/api/cmd/api
 cd apps/worker && python -m worker.main
 cd apps/web && npm run dev
 ```
 
-Compose publishes only local infrastructure: PostgreSQL on `15432`, Redis on
-`16379`, and S3-compatible SeaweedFS on `19000`. The API uses `18080` and the
-web UI uses `3000`, so they can run beside projects using the usual `5432` and
-`6379` ports.
+API dan worker memuat `.env` terdekat secara otomatis. Variabel environment
+yang sudah ada pada sistem selalu menang atas isi file `.env`.
 
-### First local simulation
+### 5. Coba alur pertama
 
-Open `http://localhost:3000` and sign in as `admin@dev.local`. In **Admin
-Dokumen**, upload a synthetic PDF, DOCX, or XLSX and set its department and
-grants. The API stores it in local SeaweedFS; the worker parses and indexes it;
-the status becomes `ready` when processing succeeds. Only a user with a
-matching grant can find or ask about the document.
+1. Buka `http://localhost:3000`.
+2. Masuk sebagai `admin@dev.local`.
+3. Buka **Knowledge Base**, unggah dokumen sintetis PDF, DOCX, atau XLSX.
+4. Tentukan departemen dan grant akses pada dokumen.
+5. Tunggu status dokumen menjadi `ready`, lalu ajukan pertanyaan melalui chat.
 
-Seeded development users are `admin@dev.local` (admin), `budi@dev.local`
-(employee, General), `siti@dev.local` (finance, Finance), and
-`rian@dev.local` (employee, Finance). Upload requires the admin role and
-access is deny-by-default.
+Akun development lain: `budi@dev.local` (employee, General),
+`siti@dev.local` (finance, Finance), dan `rian@dev.local` (employee, Finance).
+Unggah hanya tersedia untuk admin; akses dokumen selalu ditolak sampai grant
+yang sesuai diberikan.
 
-### Mock and optional AI providers
+## Konfigurasi model AI
 
-The default LLM and embedding providers are deterministic mocks. They require
-no cloud account and let you test upload, authorization, retrieval, citations,
-and finance flows. Mock embeddings are not semantic, so natural-language
-matching is limited; full-text matching still works.
+Kawandok memisahkan **LLM** (menyusun jawaban) dari **embedding** (mencari
+potongan dokumen yang relevan). Keduanya dapat menggunakan provider yang
+berbeda.
 
-The `openai` provider configuration accepts an OpenAI-compatible endpoint for
-both chat and embeddings. API and worker must use the same embedding endpoint,
-model, API key, and dimension. Changing an embedding model or dimension
-requires a fresh vector schema and re-indexing all documents.
+### Mode mock — default, tanpa biaya
 
-For local learning, malware scanning defaults to `disabled`. Before accepting
-real documents, run a ClamAV-compatible daemon and set
-`WORKER_MALWARE_SCAN_MODE=clamav`. Worker startup in `prod` requires it.
+```env
+API_LLM_PROVIDER=mock
+API_EMBEDDING_PROVIDER=mock
+WORKER_EMBEDDING_PROVIDER=mock
+```
 
-### Common Make targets
+Mode ini cocok untuk menguji upload, ACL, ingestion, sitasi, dan alur aplikasi.
+Embedding mock deterministik tetapi tidak memahami makna bahasa secara penuh;
+pencarian kata penuh tetap tersedia.
+
+### Satu model OpenAI-compatible
+
+Gunakan untuk Ollama lokal, OpenAI-compatible gateway, atau provider cloud
+yang mendukung endpoint chat-completions dan embeddings.
+
+```env
+# LLM: satu model untuk menjawab chat
+API_LLM_PROVIDER=openai
+API_LLM_BASE_URL=https://provider.example/v1
+API_LLM_API_KEY=ganti_dengan_kunci_anda
+API_LLM_MODEL=nama-model-chat
+
+# Embedding: API dan worker WAJIB sama
+API_EMBEDDING_PROVIDER=openai
+API_EMBEDDING_BASE_URL=https://provider.example/v1
+API_EMBEDDING_API_KEY=ganti_dengan_kunci_anda
+API_EMBEDDING_MODEL=nama-model-embedding
+API_EMBEDDING_DIM=1536
+
+WORKER_EMBEDDING_PROVIDER=openai
+WORKER_EMBEDDING_BASE_URL=https://provider.example/v1
+WORKER_EMBEDDING_API_KEY=ganti_dengan_kunci_anda
+WORKER_EMBEDDING_MODEL=nama-model-embedding
+WORKER_EMBEDDING_DIM=1536
+```
+
+Jangan menaruh key pada frontend atau commit key ke Git. Jika mengganti model
+atau dimensi embedding pada database yang sudah ada, buat ulang environment
+lokal atau rencanakan re-index/migrasi vector sebelum menjalankan worker.
+
+### Round-robin dan failover multi-model
+
+Mode `robin` memutar model **per request**. Jika satu endpoint gagal sebelum
+streaming mengirim token, Kawandok mencoba endpoint berikutnya secara otomatis.
+Setiap upaya dicatat di log API.
+
+Aktifkan mode ini:
+
+```env
+API_LLM_PROVIDER=robin
+```
+
+Opsi yang direkomendasikan adalah grup Groq dan Gemini. Kedua grup harus diisi
+bersamaan; model diputar secara selang-seling antar provider.
+
+```env
+API_LLM_ROBIN_GROQ_BASE_URL=https://api.groq.com/openai/v1
+API_LLM_ROBIN_GROQ_API_KEY=ganti_dengan_kunci_groq
+API_LLM_ROBIN_GROQ_MODELS=model-groq-a,model-groq-b
+
+API_LLM_ROBIN_GEMINI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai
+API_LLM_ROBIN_GEMINI_API_KEY=ganti_dengan_kunci_gemini
+API_LLM_ROBIN_GEMINI_MODELS=model-gemini-a,model-gemini-b
+```
+
+Untuk daftar endpoint bebas, gunakan format eksplisit berikut. Nilai ini
+mengambil prioritas di atas konfigurasi grup.
+
+```env
+API_LLM_ROBIN=https://provider-a.example/v1|key-a|model-a;https://provider-b.example/v1|key-b|model-b
+```
+
+Restart API setelah setiap perubahan konfigurasi LLM. Round-robin hanya berlaku
+untuk LLM; embedding harus tetap konsisten antara API dan worker.
+
+## Perintah pengembangan
 
 ```sh
-make test                         # Go, Python, and web tests
-make lint                         # Go vet, Ruff/Mypy when installed, ESLint
-make secret-scan                  # gitleaks or the tracked-file fallback
-make backup-db                    # compressed local PostgreSQL backup
-make restore-db BACKUP_FILE=...   # restore into a scratch database
-make loadtest N=200 C=10          # authenticated read-path load test
-make down                         # stop infra; keeps local volumes/data
+make test                         # membuat DB test terpisah lalu menjalankan seluruh test
+make lint                         # Go vet, Ruff/Mypy (bila terpasang), ESLint
+make secret-scan                  # gitleaks atau pemindai fallback
+make migrate-version              # versi schema database aktif
+make backup-db                    # backup PostgreSQL lokal terkompresi
+make restore-db BACKUP_FILE=...   # restore ke database scratch
+make loadtest N=200 C=10          # uji jalur GET terautentikasi
+make down                         # hentikan container, volume tetap ada
 ```
 
-`docker compose -f infra/docker-compose.yml down -v` removes local database
-and object-storage volumes; use it only when intentionally resetting the
-simulation environment.
+Untuk menghapus seluruh data simulasi lokal, gunakan:
 
-See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) and
-[docs/SECURITY-REVIEW.md](docs/SECURITY-REVIEW.md) before considering any
-non-local deployment. Production startup remains intentionally blocked until
-OIDC, retention, storage, and provider decisions are made.
-
-### IDE troubleshooting (Go imports)
-
-If your editor reports `cannot find package ... in GOROOT or GOPATH`, the tooling is resolving in **GOPATH mode** instead of module mode (this machine has `GOPATH=D:\Working\Golang` and the repo sits inside `GOPATH\src`, with `GO111MODULE=auto`). The repo ships `go.work` and `.vscode/settings.json` that force module mode:
-
-1. Open the **repository root** (`office-ai-agent`) in your editor, not a subfolder.
-2. VS Code: reload the Go language server (`Go: Restart Language Server`) or reload the window.
-3. GoLand: Settings â†’ Go â†’ Go Modules â†’ enable Go modules integration; GOROOT must point to Go 1.22.
-4. Recommended machine-wide fix: `setx GO111MODULE on` (then reopen the editor).
-
-The CLI is unaffected: `go build ./...` / `go test ./...` inside `apps/api` and from the repository root (via `go.work`) both pass.
-
-## Read these files, in order
-
-1. `AGENTS.md` â€” rules for coding agents
-2. `docs/01-PRD.md` â€” scope and acceptance criteria
-3. `docs/02-ARCHITECTURE.md` â€” boundaries and flows
-4. `docs/03-DATA-MODEL.md` â€” database and storage contracts
-5. `docs/04-AI-RAG-AND-TOOLS.md` â€” retrieval, agents and financial correctness
-6. `docs/05-SECURITY.md` â€” confidentiality and authorization
-7. `docs/06-API-CONTRACTS.md` â€” endpoints and asynchronous behaviors
-8. `docs/07-DELIVERY-PLAN.md` â€” incremental build order, tests and definition of done
-9. `prompts/START-HERE.md` â€” prompt to give the implementing agent
-
-## Working assumptions to confirm before launch
-
-Single company initially, separate departments and users; admin uploads files; PDF/DOCX/XLSX; Indonesian first; synthetic demo files only until company security and data policies are approved. Scope and integration choices are configurable; **do not invent a production IAM or data retention policy**.
-
-## Non-goals for MVP
-
-- Training/fine-tuning an LLM
-- Google Drive/SharePoint sync
-- General autonomous write actions against enterprise systems
-- Free-form arbitrary SQL execution by an LLM
-- Payroll / financial transactions posted into accounting systems
-- Guaranteeing correct OCR of every scanned or malformed file
-
-## Round-robin LLM (multi-model failover)
-
-`API_LLM_PROVIDER=robin` rotates across several OpenAI-compatible models **per
-request** and falls over to the next entry when one fails. Configure a token and
-model list per provider:
-
-```
-API_LLM_ROBIN_GROQ_BASE_URL=https://api.groq.com/openai/v1
-API_LLM_ROBIN_GROQ_API_KEY=...
-API_LLM_ROBIN_GROQ_MODELS=openai/gpt-oss-120b,openai/gpt-oss-20b
-API_LLM_ROBIN_GEMINI_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai
-API_LLM_ROBIN_GEMINI_API_KEY=...
-API_LLM_ROBIN_GEMINI_MODELS=gemini-2.5-flash,gemini-2.5-flash-lite
+```sh
+docker compose -f infra/docker-compose.yml down -v
 ```
 
-Provider groups are interleaved, so consecutive requests alternate between
-providers instead of draining one provider first. The single-string form
-`API_LLM_ROBIN=base_url|api_key|model;...` is still supported and takes
-precedence. Each attempt is logged with the serving model
-(`round-robin model served request`), and failures are logged before failover.
+Perintah tersebut menghapus PostgreSQL dan objek dokumen SeaweedFS lokal.
+
+## Keamanan dan batasan
+
+- Dokumen tidak disimpan di folder repository. Saat local development, dokumen
+  ada pada volume Docker SeaweedFS dan metadata/vector berada pada volume
+  PostgreSQL.
+- Jangan memakai data perusahaan nyata sebelum provider, retention, backup,
+  identity, dan persetujuan keamanan ditetapkan.
+- Scanner ClamAV tersedia pada worker, tetapi nonaktif pada mode development.
+  Production worker menuntut mode `clamav`.
+- Production API sengaja menolak berjalan sampai autentikasi OIDC tersedia.
+- Lisensi belum ditentukan. Pilih lisensi dan tambahkan file `LICENSE` sebelum
+  mempublikasikan repository sebagai open-source.
+
+Lihat [deployment notes](docs/DEPLOYMENT.md),
+[security review](docs/SECURITY-REVIEW.md), dan
+[baseline keamanan](docs/05-SECURITY.md) untuk detail.
+
+## Struktur repository
+
+```text
+apps/web       Next.js: antarmuka pengguna
+apps/api       Go: domain, autentikasi, ACL, chat, kontrak API
+apps/worker    Python: parsing, chunking, embedding, ingestion
+infra          Docker Compose, migration database, konfigurasi contoh
+docs           keputusan arsitektur dan dokumentasi operasional
+```
+
+## Kontribusi dan rilis open-source
+
+Sebelum menerima kontribusi publik, tambahkan setidaknya `LICENSE`,
+`CONTRIBUTING.md`, kebijakan keamanan, dan issue template. Hindari mengunggah
+`.env`, API key, data perusahaan, atau dokumen non-sintetis ke repository.

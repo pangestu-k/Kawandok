@@ -1,6 +1,7 @@
 "use client";
 
 import { Button, Card, Form, Input } from "antd";
+import Image from "next/image";
 import { useEffect, useState } from "react";
 
 import { useAuth } from "../../components/auth";
@@ -53,9 +54,9 @@ export default function LoginPage() {
     <div className="login-page">
       <section className="login-art">
         <div className="login-brand">
-          <span className="brand-mark">K</span>
+          <Image className="brand-logo brand-logo-login" src="/kawandok-wordmark.png" alt="Kawandok" width={172} height={42} priority />
           <span>
-            KantorHub <span className="muted">/ Workspace</span>
+            Kawandok <span className="muted">/ Knowledge Workspace</span>
           </span>
         </div>
         <h1>
@@ -77,20 +78,18 @@ export default function LoginPage() {
           ))}
         </div>
         <div className="login-art-bottom">
-          KantorHub · Office AI Assistant (development)
+          Kawandok · Document Intelligence (development)
         </div>
       </section>
 
       <section className="login-right">
         <Card className="login-card" variant="borderless">
           <div className="row">
-            <span className="brand-mark" style={{ background: "#125872" }}>
-              K
-            </span>
+            <Image className="brand-logo brand-logo-card" src="/kawandok-mark.png" alt="Kawandok" width={42} height={42} priority />
             <div>
-              <b>PT. Nusantara Karya</b>
+              <b>Kawandok</b>
               <p className="small" style={{ margin: 0 }}>
-                Workspace
+                Knowledge Workspace
               </p>
             </div>
           </div>

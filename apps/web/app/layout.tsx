@@ -5,9 +5,9 @@ import { Providers } from "./providers";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "KantorHub — Internal Workspace",
+  title: "Kawandok — Knowledge Workspace",
   description:
-    "Workspace internal: chat AI dengan dokumen perusahaan, knowledge base, dan laporan.",
+    "Workspace pengetahuan untuk dokumen, tanya-jawab berbasis sumber, dan laporan terverifikasi.",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
