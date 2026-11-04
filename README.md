@@ -302,8 +302,7 @@ Perintah tersebut menghapus PostgreSQL dan objek dokumen SeaweedFS lokal.
 - Scanner ClamAV tersedia pada worker, tetapi nonaktif pada mode development.
   Production worker menuntut mode `clamav`.
 - Production API sengaja menolak berjalan sampai autentikasi OIDC tersedia.
-- Lisensi belum ditentukan. Pilih lisensi dan tambahkan file `LICENSE` sebelum
-  mempublikasikan repository sebagai open-source.
+- Kawandok dirilis di bawah [Lisensi MIT](LICENSE).
 
 Lihat [deployment notes](docs/DEPLOYMENT.md),
 [security review](docs/SECURITY-REVIEW.md), dan
@@ -319,8 +318,8 @@ infra          Docker Compose, migration database, konfigurasi contoh
 docs           keputusan arsitektur dan dokumentasi operasional
 ```
 
-## Kontribusi dan rilis open-source
+## Kontribusi
 
-Sebelum menerima kontribusi publik, tambahkan setidaknya `LICENSE`,
-`CONTRIBUTING.md`, kebijakan keamanan, dan issue template. Hindari mengunggah
-`.env`, API key, data perusahaan, atau dokumen non-sintetis ke repository.
+Kontribusi dipersilakan. Baca [CONTRIBUTING.md](CONTRIBUTING.md) untuk setup,
+standar test, keamanan, dan alur pull request. Jangan mengunggah `.env`, API
+key, data perusahaan, atau dokumen non-sintetis ke repository.
