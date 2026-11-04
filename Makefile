@@ -26,7 +26,7 @@ help:
 	@echo "  backup-db / restore-db / loadtest"
 
 dev: up
-	@echo "Infra running. One-time setup: cp infra/.env.example .env"
+	@echo "Infra running. One-time setup: cp .env.example .env"
 	@echo "Start apps in separate terminals:"
 	@echo "  make run-go      (API on :18080)"
 	@echo "  make run-worker  (ingestion worker)"

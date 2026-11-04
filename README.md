@@ -91,13 +91,13 @@ sequenceDiagram
 ```sh
 git clone <URL_REPOSITORY_ANDA> kawandok
 cd kawandok
-cp infra/.env.example .env
+cp .env.example .env
 ```
 
 Pada Windows PowerShell:
 
 ```powershell
-Copy-Item infra\.env.example .env
+Copy-Item .env.example .env
 ```
 
 File `.env` sudah memakai provider `mock` sehingga tidak membutuhkan akun AI,
